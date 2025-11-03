@@ -362,6 +362,14 @@ export default function PDFChatterPage() {
     };
     setMessages((prev) => [...prev, userMsg]);
 
+    // Create a placeholder assistant message for streaming
+    const assistantMsg: Message = {
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, assistantMsg]);
+
     try {
       let sessionId = currentSessionId;
 
@@ -372,16 +380,34 @@ export default function PDFChatterPage() {
         }
       }
 
-      const response: QueryResponse = await queryAPI.queryRAG(userMessage, {
-        session_id: sessionId,
-      });
+      // Use streaming API with callback to update message incrementally
+      const response: QueryResponse = await queryAPI.queryRAGStream(
+        userMessage,
+        {
+          session_id: sessionId,
+        },
+        (chunk: string) => {
+          // Update the assistant message with each chunk
+          setMessages((prev) => {
+            const newMessages = [...prev];
+            const lastMessage = newMessages[newMessages.length - 1];
+            if (lastMessage && lastMessage.role === "assistant") {
+              lastMessage.content += chunk;
+            }
+            return newMessages;
+          });
+        },
+      );
 
-      const assistantMsg: Message = {
-        role: "assistant",
-        content: response.answer,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
+      // Update the final message with complete response
+      setMessages((prev) => {
+        const newMessages = [...prev];
+        const lastMessage = newMessages[newMessages.length - 1];
+        if (lastMessage && lastMessage.role === "assistant") {
+          lastMessage.content = response.answer;
+        }
+        return newMessages;
+      });
 
       if (response.is_new_session) {
         const updatedSessions = await chatAPI.getChatSessions();
@@ -395,15 +421,11 @@ export default function PDFChatterPage() {
           : "Failed to get response. Please try again.",
       );
 
+      // Remove both user and assistant messages on error
       setMessages((prev) => {
-        if (
-          prev.length > 0 &&
-          prev[prev.length - 1].content === userMessage &&
-          prev[prev.length - 1].role === "user"
-        ) {
-          return prev.slice(0, -1);
-        }
-        return prev;
+        const newMessages = [...prev];
+        // Remove the last two messages (user and assistant placeholder)
+        return newMessages.slice(0, -2);
       });
     } finally {
       setIsSending(false);
@@ -1045,6 +1067,12 @@ export default function PDFChatterPage() {
                                 >
                                   {message.content}
                                 </ReactMarkdown>
+                                {/* Streaming cursor indicator */}
+                                {isWaitingForResponse &&
+                                  index === messages.length - 1 &&
+                                  message.content !== "" && (
+                                    <span className="inline-block w-0.5 h-4 bg-primary ml-1 animate-pulse"></span>
+                                  )}
                               </div>
                             ) : (
                               <div className="whitespace-pre-wrap text-base">
@@ -1056,32 +1084,35 @@ export default function PDFChatterPage() {
                       </div>
                     ))}
 
-                    {/* Loading indicator when waiting for response */}
-                    {isWaitingForResponse && (
-                      <div className="flex justify-start">
-                        <div className="max-w-[85%] rounded-lg p-4 bg-muted">
-                          <div className="flex items-center space-x-3">
-                            <div className="flex space-x-1">
-                              <div
-                                className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
-                                style={{ animationDelay: "0ms" }}
-                              ></div>
-                              <div
-                                className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
-                                style={{ animationDelay: "150ms" }}
-                              ></div>
-                              <div
-                                className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
-                                style={{ animationDelay: "300ms" }}
-                              ></div>
+                    {/* Loading indicator when waiting for response but no content yet */}
+                    {isWaitingForResponse &&
+                      (messages.length === 0 ||
+                        messages[messages.length - 1]?.role !== "assistant" ||
+                        messages[messages.length - 1]?.content === "") && (
+                        <div className="flex justify-start">
+                          <div className="max-w-[85%] rounded-lg p-4 bg-muted">
+                            <div className="flex items-center space-x-3">
+                              <div className="flex space-x-1">
+                                <div
+                                  className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
+                                  style={{ animationDelay: "0ms" }}
+                                ></div>
+                                <div
+                                  className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
+                                  style={{ animationDelay: "150ms" }}
+                                ></div>
+                                <div
+                                  className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
+                                  style={{ animationDelay: "300ms" }}
+                                ></div>
+                              </div>
+                              <span className="text-sm text-muted-foreground font-medium">
+                                AI is thinking...
+                              </span>
                             </div>
-                            <span className="text-sm text-muted-foreground font-medium">
-                              AI is thinking...
-                            </span>
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
                     <div ref={messagesEndRef} />
                   </div>

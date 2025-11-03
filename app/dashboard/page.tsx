@@ -2,13 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -32,13 +26,15 @@ import {
   Clock,
   BookOpenCheck,
   Brain,
-  Sparkles,
   ChevronRight,
-  Plus,
-  Search,
-  CreditCard,
   Trash2,
   AlertCircle,
+  Menu,
+  X,
+  Home,
+  FolderOpen,
+  MessageCircle,
+  CreditCard,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -47,6 +43,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const router = useRouter();
 
   const fetchDashboardData = async () => {
@@ -54,12 +51,45 @@ export default function Dashboard() {
       setIsLoading(true);
       setError("");
 
-      // Fetch user profile, documents, and stats in parallel
-      const [userProfile, userDocuments, userStats] = await Promise.all([
+      // Fetch data with better error handling
+      const [userProfile, userDocuments, userStats] = await Promise.allSettled([
         authAPI.getCurrentUser(),
         documentsAPI.getDocuments(),
         statsAPI.getUserStats(),
-      ]);
+      ]).then((results) => {
+        const userResult = results[0];
+        const docsResult = results[1];
+        const statsResult = results[2];
+
+        // Handle user profile - required, so throw if failed
+        if (userResult.status === "rejected") {
+          const errorMsg =
+            userResult.reason instanceof Error
+              ? userResult.reason.message
+              : "Failed to load user profile";
+          throw new Error(errorMsg);
+        }
+
+        // Handle documents - optional, return empty array if failed
+        const documents =
+          docsResult.status === "fulfilled"
+            ? docsResult.value
+            : (console.error("Error fetching documents:", docsResult.reason),
+              [] as Document[]);
+
+        // Handle stats - optional, return null if failed
+        const stats =
+          statsResult.status === "fulfilled"
+            ? statsResult.value
+            : (console.error("Error fetching stats:", statsResult.reason),
+              null);
+
+        return [userResult.value, documents, stats] as [
+          User,
+          Document[],
+          UserStats | null,
+        ];
+      });
 
       setUser(userProfile);
       setDocuments(userDocuments);
@@ -68,11 +98,17 @@ export default function Dashboard() {
       console.error("Error fetching dashboard data:", err);
       if (
         err instanceof Error &&
-        (err.message.includes("401") || err.message.includes("Unauthorized"))
+        (err.message.includes("401") ||
+          err.message.includes("Unauthorized") ||
+          err.message.includes("403"))
       ) {
         handleLogout();
       } else {
-        setError("Failed to load dashboard data. Please try again.");
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Failed to load dashboard data. Please check your connection and try again.";
+        setError(errorMessage);
       }
     } finally {
       setIsLoading(false);
@@ -101,10 +137,8 @@ export default function Dashboard() {
   const handleDeleteDocument = async (documentId: string) => {
     try {
       await documentsAPI.deleteDocument(documentId);
-      // Refresh documents list
       const updatedDocuments = await documentsAPI.getDocuments();
       setDocuments(updatedDocuments);
-      // Refresh stats
       const updatedStats = await statsAPI.getUserStats();
       setStats(updatedStats);
     } catch {
@@ -156,15 +190,15 @@ export default function Dashboard() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-100 text-green-800";
+        return "bg-muted text-foreground border-border";
       case "processing":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-muted text-foreground border-border";
       case "failed":
-        return "bg-red-100 text-red-800";
+        return "bg-destructive/10 text-destructive border-destructive/20";
       case "pending":
-        return "bg-gray-100 text-gray-800";
+        return "bg-muted text-muted-foreground border-border";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-muted text-muted-foreground border-border";
     }
   };
 
@@ -178,51 +212,65 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading your dashboard...</p>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+    <div className="min-h-screen bg-background">
+      {/* Top Navigation Bar */}
+      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo & Title */}
             <div className="flex items-center space-x-4">
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-lg">
-                <BookOpen className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">
-                  StudyMate AI
-                </h1>
-                <p className="text-sm text-gray-500">
-                  AI-Assisted Student Helper
-                </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="lg:hidden -ml-2"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+              >
+                {sidebarOpen ? (
+                  <X className="h-5 w-5" />
+                ) : (
+                  <Menu className="h-5 w-5" />
+                )}
+              </Button>
+              <div className="flex items-center space-x-3">
+                <div className="h-8 w-8 rounded-lg bg-foreground flex items-center justify-center">
+                  <BookOpen className="h-4 w-4 text-background" />
+                </div>
+                <div>
+                  <h1 className="text-base font-semibold">StudyMate</h1>
+                  <p className="text-xs text-muted-foreground hidden sm:block">
+                    AI Study Assistant
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4 mr-2" />
-                Settings
+            {/* Right Actions */}
+            <div className="flex items-center space-x-2">
+              <Button variant="ghost" size="sm" className="hidden sm:flex">
+                <Settings className="h-4 w-4" />
+                <span className="hidden md:inline ml-2">Settings</span>
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleLogout}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                className="text-muted-foreground hover:text-foreground"
               >
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
+                <LogOut className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Logout</span>
               </Button>
               <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm">
+                <AvatarFallback className="bg-muted text-foreground text-sm font-medium">
                   {user ? getInitials(user.username) : "U"}
                 </AvatarFallback>
               </Avatar>
@@ -231,382 +279,373 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome back, {user?.username || "User"}! 👋
-          </h2>
-          <p className="text-gray-600">
-            Here&apos;s what&apos;s happening with your document library today.
-          </p>
-        </div>
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Sidebar Navigation */}
+          <aside
+            className={`lg:w-64 flex-shrink-0 ${sidebarOpen ? "block" : "hidden"} lg:block`}
+          >
+            <nav className="space-y-1">
+              <Card>
+                <CardContent className="p-2">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    <Home className="h-4 w-4 mr-2" />
+                    Dashboard
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      navigateToModule("chat");
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    Chat with PDFs
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      navigateToModule("reader");
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <BookOpen className="h-4 w-4 mr-2" />
+                    PDF Reader
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      navigateToModule("flashcard");
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Flashcards
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    <FolderOpen className="h-4 w-4 mr-2" />
+                    Documents
+                  </Button>
+                </CardContent>
+              </Card>
+            </nav>
+          </aside>
 
-        {/* Error Alert */}
-        {error && (
-          <Alert className="mb-6 border-red-200 bg-red-50">
-            <AlertCircle className="h-4 w-4 text-red-600" />
-            <AlertDescription className="text-red-800">
-              {error}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Stats Cards */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-blue-100 text-sm font-medium">
-                      Total Documents
-                    </p>
-                    <p className="text-3xl font-bold">
-                      {stats.total_documents}
-                    </p>
-                  </div>
-                  <div className="bg-white/20 p-3 rounded-full">
-                    <FileText className="h-6 w-6" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-green-100 text-sm font-medium">
-                      Completed
-                    </p>
-                    <p className="text-3xl font-bold">
-                      {stats.documents_by_status.completed}
-                    </p>
-                  </div>
-                  <div className="bg-white/20 p-3 rounded-full">
-                    <BookOpenCheck className="h-6 w-6" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white border-0">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-yellow-100 text-sm font-medium">
-                      Processing
-                    </p>
-                    <p className="text-3xl font-bold">
-                      {stats.documents_by_status.processing}
-                    </p>
-                  </div>
-                  <div className="bg-white/20 p-3 rounded-full">
-                    <Clock className="h-6 w-6" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white border-0">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-purple-100 text-sm font-medium">
-                      Chat Sessions
-                    </p>
-                    <p className="text-3xl font-bold">
-                      {stats.total_chat_sessions}
-                    </p>
-                  </div>
-                  <div className="bg-white/20 p-3 rounded-full">
-                    <MessageSquare className="h-6 w-6" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Module Selection */}
-          <div className="space-y-6">
-            <h3 className="text-xl font-semibold text-gray-900">
-              Choose a Module
-            </h3>
-
-            {/* Note Taking Module */}
-            <Card
-              className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-red-200 bg-gradient-to-r from-red-50 to-pink-50"
-              onClick={() => navigateToModule("reader")}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="bg-gradient-to-r from-red-500 to-pink-500 p-3 rounded-full group-hover:scale-110 transition-transform">
-                      <BookOpenCheck className="h-6 w-6 text-white" />
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-semibold text-gray-900 mb-2">
-                        📖 Note Taking
-                      </h4>
-                      <p className="text-gray-600 text-sm mb-3">
-                        Take notes of your uploaded PDFs directly in the browser
-                        with annotation support
-                      </p>
-                      <div className="flex items-center space-x-4 text-xs text-gray-500">
-                        <span className="flex items-center">
-                          <FileText className="h-3 w-3 mr-1" />
-                          View PDFs
-                        </span>
-                        <span className="flex items-center">
-                          <Plus className="h-3 w-3 mr-1" />
-                          Add Notes
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-red-500 transition-colors" />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* PDF Chat Module */}
-            <Card
-              className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50"
-              onClick={() => navigateToModule("chat")}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="bg-gradient-to-r from-blue-500 to-cyan-500 p-3 rounded-full group-hover:scale-110 transition-transform">
-                      <Brain className="h-6 w-6 text-white" />
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-semibold text-gray-900 mb-2">
-                        💬 PDF Chat
-                      </h4>
-                      <p className="text-gray-600 text-sm mb-3">
-                        Chat with your PDFs using advanced AI technology
-                      </p>
-                      <div className="flex items-center space-x-4 text-xs text-gray-500">
-                        <span className="flex items-center">
-                          <MessageSquare className="h-3 w-3 mr-1" />
-                          AI Chat
-                        </span>
-                        <span className="flex items-center">
-                          <Upload className="h-3 w-3 mr-1" />
-                          Upload PDFs
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* PDF Flashcard Module */}
-            <Card
-              className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50"
-              onClick={() => navigateToModule("flashcard")}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="bg-gradient-to-r from-purple-500 to-indigo-500 p-3 rounded-full group-hover:scale-110 transition-transform">
-                      <CreditCard className="h-6 w-6 text-white" />
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-semibold text-gray-900 mb-2">
-                        🎴 AI Flashcards
-                      </h4>
-                      <p className="text-gray-600 text-sm mb-3">
-                        Generate smart flashcards from your PDF content using AI
-                      </p>
-                      <div className="flex items-center space-x-4 text-xs text-gray-500">
-                        <span className="flex items-center">
-                          <Brain className="h-3 w-3 mr-1" />
-                          AI Generated
-                        </span>
-                        <span className="flex items-center">
-                          <CreditCard className="h-3 w-3 mr-1" />
-                          Study Cards
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-purple-500 transition-colors" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Recent Documents */}
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold text-gray-900">
-                Recent Documents
-              </h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigateToModule("chat")}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Upload New
-              </Button>
+          {/* Main Content */}
+          <main className="flex-1 space-y-8">
+            {/* Welcome Section */}
+            <div className="space-y-1">
+              <h2 className="text-3xl font-semibold tracking-tight">
+                Welcome back, {user?.username || "User"}
+              </h2>
+              <p className="text-muted-foreground">
+                Here is an overview of your documents and activities
+              </p>
             </div>
 
-            <Card className="bg-white/80 backdrop-blur-sm">
-              <CardContent className="p-6">
-                {documents.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="bg-gray-100 p-4 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                      <FileText className="h-8 w-8 text-gray-400" />
-                    </div>
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">
-                      No documents yet
-                    </h4>
-                    <p className="text-gray-600 mb-4">
-                      Upload your first PDF to get started with AI-powered
-                      analysis
-                    </p>
-                    <Button
-                      onClick={() => navigateToModule("chat")}
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload Your First PDF
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {documents.slice(0, 5).map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                      >
-                        <div className="flex items-center space-x-3 flex-1">
-                          <div className="bg-red-100 p-2 rounded">
-                            <FileText className="h-4 w-4 text-red-600" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 text-sm truncate">
-                              {doc.original_filename}
-                            </p>
-                            <div className="flex items-center space-x-3 text-xs text-gray-500">
-                              <span className="flex items-center">
-                                <Clock className="h-3 w-3 mr-1" />
-                                {getTimeAgo(doc.created_at)}
-                              </span>
-                              <span>{formatFileSize(doc.file_size)}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Badge
-                            variant="secondary"
-                            className={`text-xs ${getStatusColor(doc.embedding_status)}`}
-                          >
-                            {doc.embedding_status}
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteDocument(doc.id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+            {/* Error Alert */}
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="flex items-center justify-between gap-4">
+                  <span className="flex-1">{error}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchDashboardData()}
+                    className="flex-shrink-0"
+                  >
+                    Retry
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
 
-                    {documents.length > 5 && (
-                      <div className="text-center pt-4">
+            {/* Stats Grid */}
+            {stats && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">
+                          Total Documents
+                        </p>
+                        <p className="text-3xl font-semibold">
+                          {stats.total_documents}
+                        </p>
+                      </div>
+                      <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-foreground" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">
+                          Completed
+                        </p>
+                        <p className="text-3xl font-semibold">
+                          {stats.documents_by_status.completed}
+                        </p>
+                      </div>
+                      <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                        <BookOpenCheck className="h-5 w-5 text-foreground" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">
+                          Processing
+                        </p>
+                        <p className="text-3xl font-semibold">
+                          {stats.documents_by_status.processing}
+                        </p>
+                      </div>
+                      <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                        <Clock className="h-5 w-5 text-foreground" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">
+                          Chat Sessions
+                        </p>
+                        <p className="text-3xl font-semibold">
+                          {stats.total_chat_sessions}
+                        </p>
+                      </div>
+                      <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                        <MessageSquare className="h-5 w-5 text-foreground" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Module Cards - Left Column (2/3 width) */}
+              <div className="lg:col-span-2 space-y-6">
+                <div>
+                  <h3 className="text-xl font-semibold tracking-tight mb-4">
+                    Quick Actions
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Note Taking Module */}
+                    <Card
+                      className="cursor-pointer hover:shadow-md transition-shadow border"
+                      onClick={() => navigateToModule("reader")}
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                            <BookOpenCheck className="h-6 w-6 text-foreground" />
+                          </div>
+                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <h4 className="text-lg font-semibold mb-2">
+                          PDF Reader
+                        </h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          Read and annotate your PDFs with advanced note-taking
+                          features
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    {/* PDF Chat Module */}
+                    <Card
+                      className="cursor-pointer hover:shadow-md transition-shadow border"
+                      onClick={() => navigateToModule("chat")}
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                            <Brain className="h-6 w-6 text-foreground" />
+                          </div>
+                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <h4 className="text-lg font-semibold mb-2">AI Chat</h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          Chat with your PDFs using advanced AI-powered
+                          conversational interface
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    {/* Flashcard Module */}
+                    <Card
+                      className="cursor-pointer hover:shadow-md transition-shadow border"
+                      onClick={() => navigateToModule("flashcard")}
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                            <CreditCard className="h-6 w-6 text-foreground" />
+                          </div>
+                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <h4 className="text-lg font-semibold mb-2">
+                          Smart Flashcards
+                        </h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          Generate intelligent flashcards from your PDF content
+                          automatically
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    {/* Upload New */}
+                    <Card
+                      className="cursor-pointer hover:shadow-md transition-shadow border border-dashed"
+                      onClick={() => navigateToModule("chat")}
+                    >
+                      <CardContent className="p-6 flex flex-col items-center justify-center text-center min-h-[180px]">
+                        <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center mb-4">
+                          <Upload className="h-6 w-6 text-foreground" />
+                        </div>
+                        <h4 className="text-lg font-semibold mb-2">
+                          Upload PDFs
+                        </h4>
+                        <p className="text-sm text-muted-foreground">
+                          Add new documents to your library
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Documents - Right Column (1/3 width) */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-semibold tracking-tight">
+                    Recent Documents
+                  </h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigateToModule("chat")}
+                    className="hidden sm:flex"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload
+                  </Button>
+                </div>
+
+                <Card>
+                  <CardContent className="p-6">
+                    {documents.length === 0 ? (
+                      <div className="text-center py-12">
+                        <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center mx-auto mb-4">
+                          <FileText className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <h4 className="text-base font-semibold mb-2">
+                          No documents yet
+                        </h4>
+                        <p className="text-sm text-muted-foreground mb-6">
+                          Upload your first PDF to get started
+                        </p>
                         <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigateToModule("reader")}
+                          onClick={() => navigateToModule("chat")}
+                          variant="default"
                         >
-                          View All {documents.length} Documents
+                          <Upload className="h-4 w-4 mr-2" />
+                          Upload Your First PDF
                         </Button>
                       </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {documents.slice(0, 6).map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent transition-colors"
+                          >
+                            <div className="flex items-center space-x-3 flex-1 min-w-0">
+                              <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                                <FileText className="h-4 w-4 text-foreground" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">
+                                  {doc.original_filename}
+                                </p>
+                                <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                                  <span className="flex items-center space-x-1">
+                                    <Clock className="h-3 w-3" />
+                                    <span>{getTimeAgo(doc.created_at)}</span>
+                                  </span>
+                                  <span>•</span>
+                                  <span>{formatFileSize(doc.file_size)}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2 flex-shrink-0 ml-3">
+                              <Badge
+                                variant="outline"
+                                className={`text-xs ${getStatusColor(doc.embedding_status)}`}
+                              >
+                                {doc.embedding_status}
+                              </Badge>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteDocument(doc.id);
+                                }}
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+
+                        {documents.length > 6 && (
+                          <Button
+                            variant="ghost"
+                            className="w-full mt-2"
+                            onClick={() => navigateToModule("reader")}
+                          >
+                            View All {documents.length} Documents
+                            <ChevronRight className="h-4 w-4 ml-2" />
+                          </Button>
+                        )}
+                      </div>
                     )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <Card className="mt-8 bg-gradient-to-r from-gray-50 to-gray-100 border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center text-lg">
-              <Sparkles className="h-5 w-5 mr-2 text-purple-600" />
-              Quick Actions
-            </CardTitle>
-            <CardDescription>
-              Get started with these common tasks
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Button
-                variant="outline"
-                className="h-auto p-4 flex flex-col items-center space-y-2 hover:shadow-md transition-shadow"
-                onClick={() => navigateToModule("chat")}
-              >
-                <Upload className="h-6 w-6 text-blue-600" />
-                <span className="font-medium">Upload & Chat</span>
-                <span className="text-xs text-gray-500 text-center">
-                  Upload new PDFs and start chatting
-                </span>
-              </Button>
-
-              <Button
-                variant="outline"
-                className="h-auto p-4 flex flex-col items-center space-y-2 hover:shadow-md transition-shadow"
-                onClick={() => navigateToModule("reader")}
-              >
-                <BookOpen className="h-6 w-6 text-green-600" />
-                <span className="font-medium">Read & Annotate</span>
-                <span className="text-xs text-gray-500 text-center">
-                  Open PDFs for reading and note-taking
-                </span>
-              </Button>
-
-              <Button
-                variant="outline"
-                className="h-auto p-4 flex flex-col items-center space-y-2 hover:shadow-md transition-shadow"
-                onClick={() => navigateToModule("flashcard")}
-              >
-                <CreditCard className="h-6 w-6 text-purple-600" />
-                <span className="font-medium">Generate Flashcards</span>
-                <span className="text-xs text-gray-500 text-center">
-                  Create study cards from your PDFs
-                </span>
-              </Button>
-
-              <Button
-                variant="outline"
-                className="h-auto p-4 flex flex-col items-center space-y-2 hover:shadow-md transition-shadow"
-                onClick={() => navigateToModule("reader")}
-              >
-                <Search className="h-6 w-6 text-indigo-600" />
-                <span className="font-medium">Search Library</span>
-                <span className="text-xs text-gray-500 text-center">
-                  Find specific PDFs or content
-                </span>
-              </Button>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      </main>
+          </main>
+        </div>
+      </div>
     </div>
   );
 }
