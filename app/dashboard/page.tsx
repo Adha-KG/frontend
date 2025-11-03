@@ -1,81 +1,101 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { documentsAPI, statsAPI, authAPI, type Document, type UserStats, type User } from '@/lib/api';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  documentsAPI,
+  statsAPI,
+  authAPI,
+  type Document,
+  type UserStats,
+  type User,
+} from "@/lib/api";
 
 import {
   BookOpen,
   MessageSquare,
   Upload,
-  FileText, LogOut,
-  Settings, Clock,
+  FileText,
+  LogOut,
+  Settings,
+  Clock,
   BookOpenCheck,
   Brain,
   Sparkles,
   ChevronRight,
-  Plus, Search,
+  Plus,
+  Search,
   CreditCard,
   Trash2,
-  AlertCircle
-} from 'lucide-react';
+  AlertCircle,
+} from "lucide-react";
 
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const router = useRouter();
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
-
-    fetchDashboardData();
-  }, [router]);
 
   const fetchDashboardData = async () => {
     try {
       setIsLoading(true);
-      setError('');
+      setError("");
 
       // Fetch user profile, documents, and stats in parallel
       const [userProfile, userDocuments, userStats] = await Promise.all([
         authAPI.getCurrentUser(),
         documentsAPI.getDocuments(),
-        statsAPI.getUserStats()
+        statsAPI.getUserStats(),
       ]);
 
       setUser(userProfile);
       setDocuments(userDocuments);
       setStats(userStats);
-    } catch (err: any) {
-      console.error('Error fetching dashboard data:', err);
-      if (err.message.includes('401') || err.message.includes('Unauthorized')) {
+    } catch (err: unknown) {
+      console.error("Error fetching dashboard data:", err);
+      if (
+        err instanceof Error &&
+        (err.message.includes("401") || err.message.includes("Unauthorized"))
+      ) {
         handleLogout();
       } else {
-        setError('Failed to load dashboard data. Please try again.');
+        setError("Failed to load dashboard data. Please try again.");
       }
     } finally {
       setIsLoading(false);
     }
   };
 
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
+    fetchDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('username');
-    localStorage.removeItem('tokenType');
-    localStorage.removeItem('userId');
-    router.push('/login');
+    localStorage.removeItem("token");
+    localStorage.removeItem("username");
+    localStorage.removeItem("tokenType");
+    localStorage.removeItem("userId");
+    router.push("/login");
   };
 
   const handleDeleteDocument = async (documentId: string) => {
@@ -87,60 +107,73 @@ export default function Dashboard() {
       // Refresh stats
       const updatedStats = await statsAPI.getUserStats();
       setStats(updatedStats);
-    } catch (err: any) {
-      setError('Failed to delete document. Please try again.');
+    } catch {
+      setError("Failed to delete document. Please try again.");
     }
   };
 
-  const navigateToModule = (module: 'reader' | 'chat' | 'flashcard') => {
-    if (module === 'reader') {
-      router.push('/dashboard/pdf_Reader');
-    } else if (module === 'chat') {
-      router.push('/dashboard/chat_page');
-    } else if (module === 'flashcard') {
-      router.push('/dashboard/flashcards');
+  const navigateToModule = (module: "reader" | "chat" | "flashcard") => {
+    if (module === "reader") {
+      router.push("/dashboard/pdf_Reader");
+    } else if (module === "chat") {
+      router.push("/dashboard/chat_page");
+    } else if (module === "flashcard") {
+      router.push("/dashboard/flashcards");
     }
   };
 
   const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase() || name.slice(0, 2).toUpperCase();
+    return (
+      name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase() || name.slice(0, 2).toUpperCase()
+    );
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     });
   };
 
   const getTimeAgo = (dateString: string) => {
     const now = new Date();
     const uploadDate = new Date(dateString);
-    const diffInHours = Math.floor((now.getTime() - uploadDate.getTime()) / (1000 * 60 * 60));
+    const diffInHours = Math.floor(
+      (now.getTime() - uploadDate.getTime()) / (1000 * 60 * 60),
+    );
 
-    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 1) return "Just now";
     if (diffInHours < 24) return `${diffInHours}h ago`;
-    if (diffInHours < 48) return 'Yesterday';
+    if (diffInHours < 48) return "Yesterday";
     return formatDate(dateString);
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'processing': return 'bg-yellow-100 text-yellow-800';
-      case 'failed': return 'bg-red-100 text-red-800';
-      case 'pending': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case "completed":
+        return "bg-green-100 text-green-800";
+      case "processing":
+        return "bg-yellow-100 text-yellow-800";
+      case "failed":
+        return "bg-red-100 text-red-800";
+      case "pending":
+        return "bg-gray-100 text-gray-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
   };
 
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   if (isLoading) {
@@ -165,8 +198,12 @@ export default function Dashboard() {
                 <BookOpen className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">StudyMate AI</h1>
-                <p className="text-sm text-gray-500">AI-Assisted Student Helper</p>
+                <h1 className="text-xl font-bold text-gray-900">
+                  StudyMate AI
+                </h1>
+                <p className="text-sm text-gray-500">
+                  AI-Assisted Student Helper
+                </p>
               </div>
             </div>
 
@@ -175,13 +212,18 @@ export default function Dashboard() {
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
               </Button>
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm">
-                  {user ? getInitials(user.username) : 'U'}
+                  {user ? getInitials(user.username) : "U"}
                 </AvatarFallback>
               </Avatar>
             </div>
@@ -194,16 +236,20 @@ export default function Dashboard() {
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome back, {user?.username || 'User'}! 👋
+            Welcome back, {user?.username || "User"}! 👋
           </h2>
-          <p className="text-gray-600">Here's what's happening with your document library today.</p>
+          <p className="text-gray-600">
+            Here&apos;s what&apos;s happening with your document library today.
+          </p>
         </div>
 
         {/* Error Alert */}
         {error && (
           <Alert className="mb-6 border-red-200 bg-red-50">
             <AlertCircle className="h-4 w-4 text-red-600" />
-            <AlertDescription className="text-red-800">{error}</AlertDescription>
+            <AlertDescription className="text-red-800">
+              {error}
+            </AlertDescription>
           </Alert>
         )}
 
@@ -214,8 +260,12 @@ export default function Dashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-blue-100 text-sm font-medium">Total Documents</p>
-                    <p className="text-3xl font-bold">{stats.total_documents}</p>
+                    <p className="text-blue-100 text-sm font-medium">
+                      Total Documents
+                    </p>
+                    <p className="text-3xl font-bold">
+                      {stats.total_documents}
+                    </p>
                   </div>
                   <div className="bg-white/20 p-3 rounded-full">
                     <FileText className="h-6 w-6" />
@@ -228,8 +278,12 @@ export default function Dashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-green-100 text-sm font-medium">Completed</p>
-                    <p className="text-3xl font-bold">{stats.documents_by_status.completed}</p>
+                    <p className="text-green-100 text-sm font-medium">
+                      Completed
+                    </p>
+                    <p className="text-3xl font-bold">
+                      {stats.documents_by_status.completed}
+                    </p>
                   </div>
                   <div className="bg-white/20 p-3 rounded-full">
                     <BookOpenCheck className="h-6 w-6" />
@@ -242,8 +296,12 @@ export default function Dashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-yellow-100 text-sm font-medium">Processing</p>
-                    <p className="text-3xl font-bold">{stats.documents_by_status.processing}</p>
+                    <p className="text-yellow-100 text-sm font-medium">
+                      Processing
+                    </p>
+                    <p className="text-3xl font-bold">
+                      {stats.documents_by_status.processing}
+                    </p>
                   </div>
                   <div className="bg-white/20 p-3 rounded-full">
                     <Clock className="h-6 w-6" />
@@ -256,8 +314,12 @@ export default function Dashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-purple-100 text-sm font-medium">Chat Sessions</p>
-                    <p className="text-3xl font-bold">{stats.total_chat_sessions}</p>
+                    <p className="text-purple-100 text-sm font-medium">
+                      Chat Sessions
+                    </p>
+                    <p className="text-3xl font-bold">
+                      {stats.total_chat_sessions}
+                    </p>
                   </div>
                   <div className="bg-white/20 p-3 rounded-full">
                     <MessageSquare className="h-6 w-6" />
@@ -271,11 +333,15 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Module Selection */}
           <div className="space-y-6">
-            <h3 className="text-xl font-semibold text-gray-900">Choose a Module</h3>
+            <h3 className="text-xl font-semibold text-gray-900">
+              Choose a Module
+            </h3>
 
             {/* Note Taking Module */}
-            <Card className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-red-200 bg-gradient-to-r from-red-50 to-pink-50"
-              onClick={() => navigateToModule('reader')}>
+            <Card
+              className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-red-200 bg-gradient-to-r from-red-50 to-pink-50"
+              onClick={() => navigateToModule("reader")}
+            >
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center space-x-4">
@@ -283,9 +349,12 @@ export default function Dashboard() {
                       <BookOpenCheck className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                      <h4 className="text-lg font-semibold text-gray-900 mb-2">📖 Note Taking</h4>
+                      <h4 className="text-lg font-semibold text-gray-900 mb-2">
+                        📖 Note Taking
+                      </h4>
                       <p className="text-gray-600 text-sm mb-3">
-                        Take notes of your uploaded PDFs directly in the browser with annotation support
+                        Take notes of your uploaded PDFs directly in the browser
+                        with annotation support
                       </p>
                       <div className="flex items-center space-x-4 text-xs text-gray-500">
                         <span className="flex items-center">
@@ -305,8 +374,10 @@ export default function Dashboard() {
             </Card>
 
             {/* PDF Chat Module */}
-            <Card className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50"
-              onClick={() => navigateToModule('chat')}>
+            <Card
+              className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50"
+              onClick={() => navigateToModule("chat")}
+            >
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center space-x-4">
@@ -314,7 +385,9 @@ export default function Dashboard() {
                       <Brain className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                      <h4 className="text-lg font-semibold text-gray-900 mb-2">💬 PDF Chat</h4>
+                      <h4 className="text-lg font-semibold text-gray-900 mb-2">
+                        💬 PDF Chat
+                      </h4>
                       <p className="text-gray-600 text-sm mb-3">
                         Chat with your PDFs using advanced AI technology
                       </p>
@@ -336,8 +409,10 @@ export default function Dashboard() {
             </Card>
 
             {/* PDF Flashcard Module */}
-            <Card className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50"
-              onClick={() => navigateToModule('flashcard')}>
+            <Card
+              className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50"
+              onClick={() => navigateToModule("flashcard")}
+            >
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center space-x-4">
@@ -345,7 +420,9 @@ export default function Dashboard() {
                       <CreditCard className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                      <h4 className="text-lg font-semibold text-gray-900 mb-2">🎴 AI Flashcards</h4>
+                      <h4 className="text-lg font-semibold text-gray-900 mb-2">
+                        🎴 AI Flashcards
+                      </h4>
                       <p className="text-gray-600 text-sm mb-3">
                         Generate smart flashcards from your PDF content using AI
                       </p>
@@ -370,8 +447,14 @@ export default function Dashboard() {
           {/* Recent Documents */}
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold text-gray-900">Recent Documents</h3>
-              <Button variant="outline" size="sm" onClick={() => navigateToModule('chat')}>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Recent Documents
+              </h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigateToModule("chat")}
+              >
                 <Upload className="h-4 w-4 mr-2" />
                 Upload New
               </Button>
@@ -384,9 +467,17 @@ export default function Dashboard() {
                     <div className="bg-gray-100 p-4 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                       <FileText className="h-8 w-8 text-gray-400" />
                     </div>
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">No documents yet</h4>
-                    <p className="text-gray-600 mb-4">Upload your first PDF to get started with AI-powered analysis</p>
-                    <Button onClick={() => navigateToModule('chat')} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">
+                      No documents yet
+                    </h4>
+                    <p className="text-gray-600 mb-4">
+                      Upload your first PDF to get started with AI-powered
+                      analysis
+                    </p>
+                    <Button
+                      onClick={() => navigateToModule("chat")}
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                    >
                       <Upload className="h-4 w-4 mr-2" />
                       Upload Your First PDF
                     </Button>
@@ -394,7 +485,10 @@ export default function Dashboard() {
                 ) : (
                   <div className="space-y-4">
                     {documents.slice(0, 5).map((doc) => (
-                      <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                      <div
+                        key={doc.id}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
                         <div className="flex items-center space-x-3 flex-1">
                           <div className="bg-red-100 p-2 rounded">
                             <FileText className="h-4 w-4 text-red-600" />
@@ -413,11 +507,14 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <div className="flex items-center space-x-2">
-                          <Badge variant="secondary" className={`text-xs ${getStatusColor(doc.embedding_status)}`}>
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs ${getStatusColor(doc.embedding_status)}`}
+                          >
                             {doc.embedding_status}
                           </Badge>
-                          <Button 
-                            variant="ghost" 
+                          <Button
+                            variant="ghost"
                             size="sm"
                             onClick={() => handleDeleteDocument(doc.id)}
                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -430,7 +527,11 @@ export default function Dashboard() {
 
                     {documents.length > 5 && (
                       <div className="text-center pt-4">
-                        <Button variant="ghost" size="sm" onClick={() => navigateToModule('reader')}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigateToModule("reader")}
+                        >
                           View All {documents.length} Documents
                         </Button>
                       </div>
@@ -458,41 +559,49 @@ export default function Dashboard() {
               <Button
                 variant="outline"
                 className="h-auto p-4 flex flex-col items-center space-y-2 hover:shadow-md transition-shadow"
-                onClick={() => navigateToModule('chat')}
+                onClick={() => navigateToModule("chat")}
               >
                 <Upload className="h-6 w-6 text-blue-600" />
                 <span className="font-medium">Upload & Chat</span>
-                <span className="text-xs text-gray-500 text-center">Upload new PDFs and start chatting</span>
+                <span className="text-xs text-gray-500 text-center">
+                  Upload new PDFs and start chatting
+                </span>
               </Button>
 
               <Button
                 variant="outline"
                 className="h-auto p-4 flex flex-col items-center space-y-2 hover:shadow-md transition-shadow"
-                onClick={() => navigateToModule('reader')}
+                onClick={() => navigateToModule("reader")}
               >
                 <BookOpen className="h-6 w-6 text-green-600" />
                 <span className="font-medium">Read & Annotate</span>
-                <span className="text-xs text-gray-500 text-center">Open PDFs for reading and note-taking</span>
+                <span className="text-xs text-gray-500 text-center">
+                  Open PDFs for reading and note-taking
+                </span>
               </Button>
 
               <Button
                 variant="outline"
                 className="h-auto p-4 flex flex-col items-center space-y-2 hover:shadow-md transition-shadow"
-                onClick={() => navigateToModule('flashcard')}
+                onClick={() => navigateToModule("flashcard")}
               >
                 <CreditCard className="h-6 w-6 text-purple-600" />
                 <span className="font-medium">Generate Flashcards</span>
-                <span className="text-xs text-gray-500 text-center">Create study cards from your PDFs</span>
+                <span className="text-xs text-gray-500 text-center">
+                  Create study cards from your PDFs
+                </span>
               </Button>
 
               <Button
                 variant="outline"
                 className="h-auto p-4 flex flex-col items-center space-y-2 hover:shadow-md transition-shadow"
-                onClick={() => navigateToModule('reader')}
+                onClick={() => navigateToModule("reader")}
               >
                 <Search className="h-6 w-6 text-indigo-600" />
                 <span className="font-medium">Search Library</span>
-                <span className="text-xs text-gray-500 text-center">Find specific PDFs or content</span>
+                <span className="text-xs text-gray-500 text-center">
+                  Find specific PDFs or content
+                </span>
               </Button>
             </div>
           </CardContent>

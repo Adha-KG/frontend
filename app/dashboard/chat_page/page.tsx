@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState, useEffect } from "react";
-import { useRouter } from 'next/navigation';
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,35 +14,32 @@ import {
   CheckCircle,
   Loader2,
   Plus,
-  MessageSquare, LogOut,
+  MessageSquare,
+  LogOut,
   ArrowLeft,
   Trash2,
-  RefreshCw
+  RefreshCw,
 } from "lucide-react";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
-import { documentsAPI, chatAPI, queryAPI, authAPI } from '@/lib/api';
-import type { Document, ChatSession, QueryResponse } from '@/lib/api';
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import { documentsAPI, chatAPI, queryAPI, authAPI } from "@/lib/api";
+import type { Document, ChatSession, QueryResponse } from "@/lib/api";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100MB total
 
-// Configure your backend URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 interface Message {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   timestamp: string;
 }
 
 export default function PDFChatterPage() {
   // Authentication state
-  const [username, setUsername] = useState('');
-  const [token, setToken] = useState('');
+  const [username, setUsername] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Document management state
@@ -61,24 +58,51 @@ export default function PDFChatterPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const initializeData = async () => {
+    try {
+      const [userProfile, documentsData, sessionsData] = await Promise.all([
+        authAPI.getCurrentUser(),
+        documentsAPI.getDocuments(),
+        chatAPI.getChatSessions(),
+      ]);
+
+      setUsername(userProfile.username || userProfile.email);
+      setDocuments(documentsData);
+      setChatSessions(sessionsData);
+
+      const activeSession = sessionsData.find((session) => session.is_active);
+      if (activeSession) {
+        setCurrentSessionId(activeSession.id);
+        await loadChatMessages(activeSession.id);
+      }
+    } catch (error) {
+      console.error("Failed to initialize data:", error);
+      if (error instanceof Error && error.message.includes("401")) {
+        handleLogout();
+      } else {
+        setError("Failed to load data. Please refresh the page.");
+      }
+    }
+  };
+
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
+    const storedToken = localStorage.getItem("token");
 
     if (!storedToken) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
 
-    setToken(storedToken);
     setIsAuthenticated(true);
     initializeData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
@@ -88,8 +112,10 @@ export default function PDFChatterPage() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const hasProcessingDocs = documents.some(doc =>
-      doc.embedding_status === 'processing' || doc.embedding_status === 'pending'
+    const hasProcessingDocs = documents.some(
+      (doc) =>
+        doc.embedding_status === "processing" ||
+        doc.embedding_status === "pending",
     );
 
     if (hasProcessingDocs) {
@@ -98,14 +124,16 @@ export default function PDFChatterPage() {
           const updatedDocuments = await documentsAPI.getDocuments();
           setDocuments(updatedDocuments);
 
-          const stillProcessing = updatedDocuments.some(doc =>
-            doc.embedding_status === 'processing' || doc.embedding_status === 'pending'
+          const stillProcessing = updatedDocuments.some(
+            (doc) =>
+              doc.embedding_status === "processing" ||
+              doc.embedding_status === "pending",
           );
           if (!stillProcessing) {
             clearInterval(pollInterval);
           }
         } catch (error) {
-          console.error('Error polling document status:', error);
+          console.error("Error polling document status:", error);
         }
       }, 3000);
 
@@ -117,33 +145,6 @@ export default function PDFChatterPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const initializeData = async () => {
-    try {
-      const [userProfile, documentsData, sessionsData] = await Promise.all([
-        authAPI.getCurrentUser(),
-        documentsAPI.getDocuments(),
-        chatAPI.getChatSessions()
-      ]);
-
-      setUsername(userProfile.username || userProfile.email);
-      setDocuments(documentsData);
-      setChatSessions(sessionsData);
-
-      const activeSession = sessionsData.find(session => session.is_active);
-      if (activeSession) {
-        setCurrentSessionId(activeSession.id);
-        await loadChatMessages(activeSession.id);
-      }
-    } catch (error) {
-      console.error('Failed to initialize data:', error);
-      if (error instanceof Error && error.message.includes('401')) {
-        handleLogout();
-      } else {
-        setError('Failed to load data. Please refresh the page.');
-      }
-    }
-  };
-
   const loadChatMessages = async (sessionId: string) => {
     try {
       setIsLoadingMessages(true);
@@ -152,39 +153,65 @@ export default function PDFChatterPage() {
       const formattedMessages: Message[] = chatMessages.map((msg, index) => {
         let isUserMessage = false;
 
-        if (msg.content.startsWith('Q: ') && msg.content.includes('\nA: ')) {
+        if (msg.content.startsWith("Q: ") && msg.content.includes("\nA: ")) {
           return {
-            role: 'user',
-            content: msg.content.substring(3).split('\nA: ')[0],
-            timestamp: msg.created_at
+            role: "user",
+            content: msg.content.substring(3).split("\nA: ")[0],
+            timestamp: msg.created_at,
           };
         }
 
         const userIndicators = [
-          '?', 'what', 'how', 'why', 'when', 'where', 'who', 'which',
-          'explain', 'tell me', 'can you', 'could you', 'please',
-          'help me', 'i need', 'show me'
+          "?",
+          "what",
+          "how",
+          "why",
+          "when",
+          "where",
+          "who",
+          "which",
+          "explain",
+          "tell me",
+          "can you",
+          "could you",
+          "please",
+          "help me",
+          "i need",
+          "show me",
         ];
 
         const assistantIndicators = [
-          'based on', 'according to', 'the document', 'as mentioned',
-          'here is', 'here are', 'to answer', 'in summary',
-          '## ', '### ', '**', '```',
-          'comprehensive', 'detailed explanation', 'study guide'
+          "based on",
+          "according to",
+          "the document",
+          "as mentioned",
+          "here is",
+          "here are",
+          "to answer",
+          "in summary",
+          "## ",
+          "### ",
+          "**",
+          "```",
+          "comprehensive",
+          "detailed explanation",
+          "study guide",
         ];
 
         const lowerContent = msg.content.toLowerCase();
 
-        const hasUserIndicators = userIndicators.some(indicator =>
-          lowerContent.includes(indicator.toLowerCase())
+        const hasUserIndicators = userIndicators.some((indicator) =>
+          lowerContent.includes(indicator.toLowerCase()),
         );
 
-        const hasAssistantIndicators = assistantIndicators.some(indicator =>
-          lowerContent.includes(indicator.toLowerCase())
+        const hasAssistantIndicators = assistantIndicators.some((indicator) =>
+          lowerContent.includes(indicator.toLowerCase()),
         );
 
-        const isLikelyQuestion = msg.content.length < 500 && msg.content.endsWith('?');
-        const isLikelyResponse = msg.content.length > 200 || msg.content.includes('\n\n');
+        const isLikelyQuestion =
+          msg.content.length < 500 && msg.content.endsWith("?");
+        const isLikelyResponse =
+          msg.content.length > 200 || msg.content.includes("\n\n");
 
         const isEvenIndex = index % 2 === 0;
 
@@ -201,26 +228,26 @@ export default function PDFChatterPage() {
         }
 
         return {
-          role: isUserMessage ? 'user' : 'assistant',
+          role: isUserMessage ? "user" : "assistant",
           content: msg.content,
-          timestamp: msg.created_at
+          timestamp: msg.created_at,
         };
       });
 
       setMessages(formattedMessages);
     } catch (error) {
-      console.error('Failed to load messages:', error);
-      setError('Failed to load chat messages');
+      console.error("Failed to load messages:", error);
+      setError("Failed to load chat messages");
     } finally {
       setIsLoadingMessages(false);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('username');
-    localStorage.removeItem('tokenType');
-    router.push('/login');
+    localStorage.removeItem("token");
+    localStorage.removeItem("username");
+    localStorage.removeItem("tokenType");
+    router.push("/login");
   };
 
   const validateFiles = (files: File[]) => {
@@ -229,13 +256,17 @@ export default function PDFChatterPage() {
 
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) {
-        errors.push(`${file.name} is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum size is 50MB.`);
+        errors.push(
+          `${file.name} is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum size is 50MB.`,
+        );
       }
       totalSize += file.size;
     }
 
     if (totalSize > MAX_TOTAL_SIZE) {
-      errors.push(`Total file size too large (${(totalSize / (1024 * 1024)).toFixed(1)}MB). Maximum total size is 100MB.`);
+      errors.push(
+        `Total file size too large (${(totalSize / (1024 * 1024)).toFixed(1)}MB). Maximum total size is 100MB.`,
+      );
     }
 
     return errors;
@@ -244,18 +275,18 @@ export default function PDFChatterPage() {
   const handleFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files).filter(
-        file => file.type === 'application/pdf'
+        (file) => file.type === "application/pdf",
       );
 
       const validationErrors = validateFiles(newFiles);
       if (validationErrors.length > 0) {
-        setError(validationErrors.join(' '));
-        e.target.value = '';
+        setError(validationErrors.join(" "));
+        e.target.value = "";
         return;
       }
 
       setFiles(newFiles);
-      e.target.value = '';
+      e.target.value = "";
 
       if (newFiles.length > 0) {
         await uploadPDFs(newFiles);
@@ -265,20 +296,24 @@ export default function PDFChatterPage() {
 
   const uploadPDFs = async (filesToUpload: File[]) => {
     setIsUploading(true);
-    setError('');
+    setError("");
 
     try {
       const uploadResults = await documentsAPI.uploadDocuments(filesToUpload);
-      console.log('Upload results:', uploadResults);
+      console.log("Upload results:", uploadResults);
 
       const updatedDocuments = await documentsAPI.getDocuments();
       setDocuments(updatedDocuments);
       setFiles([]);
 
-      setError('');
+      setError("");
     } catch (error) {
       console.error("Upload error:", error);
-      setError(error instanceof Error ? error.message : "Failed to upload PDFs. Please try again.");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Failed to upload PDFs. Please try again.",
+      );
       setFiles([]);
     } finally {
       setIsUploading(false);
@@ -290,11 +325,11 @@ export default function PDFChatterPage() {
       const sessionName = `Chat - ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
       const newSession = await chatAPI.createChatSession({
         session_name: sessionName,
-        session_type: 'conversation',
-        document_ids: selectedDocuments
+        session_type: "conversation",
+        document_ids: selectedDocuments,
       });
 
-      setChatSessions(prev => [newSession, ...prev]);
+      setChatSessions((prev) => [newSession, ...prev]);
       setCurrentSessionId(newSession.id);
 
       if (!preserveMessages) {
@@ -303,8 +338,8 @@ export default function PDFChatterPage() {
 
       return newSession.id;
     } catch (error) {
-      console.error('Failed to create chat session:', error);
-      setError('Failed to create new chat session');
+      console.error("Failed to create chat session:", error);
+      setError("Failed to create new chat session");
       return null;
     }
   };
@@ -318,14 +353,14 @@ export default function PDFChatterPage() {
 
     setIsSending(true);
     setIsWaitingForResponse(true);
-    setError('');
+    setError("");
 
     const userMsg: Message = {
-      role: 'user',
+      role: "user",
       content: userMessage,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
-    setMessages(prev => [...prev, userMsg]);
+    setMessages((prev) => [...prev, userMsg]);
 
     try {
       let sessionId = currentSessionId;
@@ -333,32 +368,39 @@ export default function PDFChatterPage() {
       if (!sessionId) {
         sessionId = await createNewChatSession(true);
         if (!sessionId) {
-          throw new Error('Failed to create chat session');
+          throw new Error("Failed to create chat session");
         }
       }
 
       const response: QueryResponse = await queryAPI.queryRAG(userMessage, {
-        session_id: sessionId
+        session_id: sessionId,
       });
 
       const assistantMsg: Message = {
-        role: 'assistant',
+        role: "assistant",
         content: response.answer,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
-      setMessages(prev => [...prev, assistantMsg]);
+      setMessages((prev) => [...prev, assistantMsg]);
 
       if (response.is_new_session) {
         const updatedSessions = await chatAPI.getChatSessions();
         setChatSessions(updatedSessions);
       }
-
     } catch (error) {
       console.error("Question error:", error);
-      setError(error instanceof Error ? error.message : "Failed to get response. Please try again.");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Failed to get response. Please try again.",
+      );
 
-      setMessages(prev => {
-        if (prev.length > 0 && prev[prev.length - 1].content === userMessage && prev[prev.length - 1].role === 'user') {
+      setMessages((prev) => {
+        if (
+          prev.length > 0 &&
+          prev[prev.length - 1].content === userMessage &&
+          prev[prev.length - 1].role === "user"
+        ) {
           return prev.slice(0, -1);
         }
         return prev;
@@ -370,14 +412,14 @@ export default function PDFChatterPage() {
   };
 
   const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+    setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const toggleDocumentSelection = (documentId: string) => {
-    setSelectedDocuments(prev =>
+    setSelectedDocuments((prev) =>
       prev.includes(documentId)
-        ? prev.filter(id => id !== documentId)
-        : [...prev, documentId]
+        ? prev.filter((id) => id !== documentId)
+        : [...prev, documentId],
     );
   };
 
@@ -394,14 +436,16 @@ export default function PDFChatterPage() {
       const updatedDocuments = await documentsAPI.getDocuments();
       setDocuments(updatedDocuments);
 
-      setSelectedDocuments(prev => prev.filter(id => id !== documentId));
+      setSelectedDocuments((prev) => prev.filter((id) => id !== documentId));
 
       if (selectedDocuments.includes(documentId)) {
         clearSession();
       }
     } catch (error) {
-      console.error('Failed to delete document:', error);
-      setError(error instanceof Error ? error.message : 'Failed to delete document');
+      console.error("Failed to delete document:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to delete document",
+      );
     }
   };
 
@@ -421,8 +465,8 @@ export default function PDFChatterPage() {
         clearSession();
       }
     } catch (error) {
-      console.error('Failed to delete chat session:', error);
-      setError('Failed to delete chat session');
+      console.error("Failed to delete chat session:", error);
+      setError("Failed to delete chat session");
     }
   };
 
@@ -445,13 +489,13 @@ export default function PDFChatterPage() {
     setIsDragging(false);
 
     const droppedFiles = Array.from(e.dataTransfer.files).filter(
-      file => file.type === 'application/pdf'
+      (file) => file.type === "application/pdf",
     );
 
     if (droppedFiles.length > 0) {
       const validationErrors = validateFiles(droppedFiles);
       if (validationErrors.length > 0) {
-        setError(validationErrors.join(' '));
+        setError(validationErrors.join(" "));
         return;
       }
 
@@ -460,34 +504,16 @@ export default function PDFChatterPage() {
     }
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
   const getDocumentStatus = (status: string) => {
     switch (status) {
-      case 'completed':
-        return { text: 'Ready', color: 'bg-green-100 text-green-800' };
-      case 'processing':
-        return { text: 'Processing', color: 'bg-yellow-100 text-yellow-800' };
-      case 'failed':
-        return { text: 'Failed', color: 'bg-red-100 text-red-800' };
+      case "completed":
+        return { text: "Ready", color: "bg-green-100 text-green-800" };
+      case "processing":
+        return { text: "Processing", color: "bg-yellow-100 text-yellow-800" };
+      case "failed":
+        return { text: "Failed", color: "bg-red-100 text-red-800" };
       default:
-        return { text: 'Pending', color: 'bg-gray-100 text-gray-800' };
+        return { text: "Pending", color: "bg-gray-100 text-gray-800" };
     }
   };
 
@@ -508,7 +534,11 @@ export default function PDFChatterPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-4 flex-shrink-0">
           <div className="flex items-center space-x-4">
-            <Button variant="ghost" onClick={() => router.push('/dashboard')} className="p-2">
+            <Button
+              variant="ghost"
+              onClick={() => router.push("/dashboard")}
+              className="p-2"
+            >
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div>
@@ -523,7 +553,12 @@ export default function PDFChatterPage() {
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
             </Button>
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-600">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="text-red-600"
+            >
               <LogOut className="w-4 h-4 mr-2" />
               Logout
             </Button>
@@ -533,7 +568,9 @@ export default function PDFChatterPage() {
         {/* Error Alert */}
         {error && (
           <Alert className="mb-4 border-red-200 bg-red-50 flex-shrink-0">
-            <AlertDescription className="text-red-800">{error}</AlertDescription>
+            <AlertDescription className="text-red-800">
+              {error}
+            </AlertDescription>
           </Alert>
         )}
 
@@ -556,9 +593,10 @@ export default function PDFChatterPage() {
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   className={`border-2 border-dashed rounded-lg p-4 cursor-pointer transition-all duration-200 text-center
-                    ${isDragging
-                      ? 'border-primary bg-primary/5'
-                      : 'border-muted-foreground/25 hover:border-primary/50'
+                    ${
+                      isDragging
+                        ? "border-primary bg-primary/5"
+                        : "border-muted-foreground/25 hover:border-primary/50"
                     }`}
                 >
                   {isUploading ? (
@@ -592,7 +630,10 @@ export default function PDFChatterPage() {
                   <div className="mt-3 space-y-1">
                     <p className="text-xs font-medium">Files to upload:</p>
                     {files.map((file, index) => (
-                      <div key={index} className="flex items-center justify-between p-2 bg-muted/50 rounded text-xs">
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-2 bg-muted/50 rounded text-xs"
+                      >
                         <div className="flex items-center gap-2 min-w-0">
                           <FileText className="w-3 h-3 text-primary flex-shrink-0" />
                           <span className="truncate">{file.name}</span>
@@ -621,7 +662,9 @@ export default function PDFChatterPage() {
                     Documents ({documents.length})
                   </div>
                   {selectedDocuments.length > 0 && (
-                    <Badge variant="secondary" className="text-xs">{selectedDocuments.length} selected</Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      {selectedDocuments.length} selected
+                    </Badge>
                   )}
                 </CardTitle>
               </CardHeader>
@@ -634,23 +677,33 @@ export default function PDFChatterPage() {
                 ) : (
                   <div className="space-y-2">
                     {documents.map((document) => {
-                      const status = getDocumentStatus(document.embedding_status);
+                      const status = getDocumentStatus(
+                        document.embedding_status,
+                      );
                       return (
                         <div
                           key={document.id}
                           className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer
-                            ${selectedDocuments.includes(document.id)
-                              ? 'border-primary bg-primary/5'
-                              : 'border-muted hover:border-muted-foreground/50'
+                            ${
+                              selectedDocuments.includes(document.id)
+                                ? "border-primary bg-primary/5"
+                                : "border-muted hover:border-muted-foreground/50"
                             }`}
-                          onClick={() => document.embedding_status === 'completed' && toggleDocumentSelection(document.id)}
+                          onClick={() =>
+                            document.embedding_status === "completed" &&
+                            toggleDocumentSelection(document.id)
+                          }
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <div className={`p-1 rounded ${selectedDocuments.includes(document.id) ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                            <div
+                              className={`p-1 rounded ${selectedDocuments.includes(document.id) ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+                            >
                               <FileText className="w-3 h-3" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium truncate">{document.original_filename}</p>
+                              <p className="text-xs font-medium truncate">
+                                {document.original_filename}
+                              </p>
                               <div className="flex items-center gap-1">
                                 <Badge className={`text-xs ${status.color}`}>
                                   {status.text}
@@ -659,10 +712,11 @@ export default function PDFChatterPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0">
-                            {selectedDocuments.includes(document.id) && document.embedding_status === 'completed' && (
-                              <CheckCircle className="w-3 h-3 text-primary" />
-                            )}
-                            {document.embedding_status === 'processing' && (
+                            {selectedDocuments.includes(document.id) &&
+                              document.embedding_status === "completed" && (
+                                <CheckCircle className="w-3 h-3 text-primary" />
+                              )}
+                            {document.embedding_status === "processing" && (
                               <Loader2 className="w-3 h-3 animate-spin text-yellow-600" />
                             )}
                             <Button
@@ -715,14 +769,17 @@ export default function PDFChatterPage() {
                       <div
                         key={session.id}
                         className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer
-                          ${currentSessionId === session.id
-                            ? 'border-primary bg-primary/5'
-                            : 'border-muted hover:border-muted-foreground/50'
+                          ${
+                            currentSessionId === session.id
+                              ? "border-primary bg-primary/5"
+                              : "border-muted hover:border-muted-foreground/50"
                           }`}
                         onClick={() => switchChatSession(session.id)}
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate">{session.session_name}</p>
+                          <p className="text-xs font-medium truncate">
+                            {session.session_name}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             {session.message_count} messages
                           </p>
@@ -758,9 +815,13 @@ export default function PDFChatterPage() {
                         <MessageSquare className="w-4 h-4 text-primary" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium">Active Chat Session</p>
+                        <p className="text-sm font-medium">
+                          Active Chat Session
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {selectedDocuments.length} document{selectedDocuments.length > 1 ? 's' : ''} available for queries
+                          {selectedDocuments.length} document
+                          {selectedDocuments.length > 1 ? "s" : ""} available
+                          for queries
                         </p>
                       </div>
                     </div>
@@ -788,12 +849,15 @@ export default function PDFChatterPage() {
                   <div className="flex items-center justify-center h-full text-center">
                     <div>
                       <MessageSquare className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
-                      <h3 className="text-lg font-medium mb-2">Ready to Chat!</h3>
+                      <h3 className="text-lg font-medium mb-2">
+                        Ready to Chat!
+                      </h3>
                       <p className="text-muted-foreground mb-4">
-                        {documents.filter(d => d.embedding_status === 'completed').length === 0
-                          ? 'Upload and process some PDFs first to get started'
-                          : 'Ask me anything about your documents'
-                        }
+                        {documents.filter(
+                          (d) => d.embedding_status === "completed",
+                        ).length === 0
+                          ? "Upload and process some PDFs first to get started"
+                          : "Ask me anything about your documents"}
                       </p>
                     </div>
                   </div>
@@ -802,83 +866,119 @@ export default function PDFChatterPage() {
                     {messages.map((message, index) => (
                       <div
                         key={index}
-                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                        className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                       >
                         <div
-                          className={`max-w-[85%] rounded-lg p-4 ${message.role === 'user'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted'
-                            }`}
+                          className={`max-w-[85%] rounded-lg p-4 ${
+                            message.role === "user"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted"
+                          }`}
                         >
                           <div className="text-base leading-relaxed">
-                            {message.role === 'assistant' ? (
+                            {message.role === "assistant" ? (
                               <div className="prose prose-sm max-w-none prose-slate dark:prose-invert prose-headings:font-semibold prose-p:text-foreground prose-strong:text-foreground prose-li:text-foreground prose-code:text-foreground prose-pre:bg-muted-foreground/10">
-                                <ReactMarkdown 
+                                <ReactMarkdown
                                   remarkPlugins={[remarkGfm, remarkMath]}
                                   rehypePlugins={[rehypeKatex]}
                                   components={{
                                     h1: ({ children, ...props }) => (
-                                      <h1 className="text-xl font-bold mb-3 mt-0 text-foreground" {...props}>
+                                      <h1
+                                        className="text-xl font-bold mb-3 mt-0 text-foreground"
+                                        {...props}
+                                      >
                                         {children}
                                       </h1>
                                     ),
                                     h2: ({ children, ...props }) => (
-                                      <h2 className="text-lg font-semibold mb-2 mt-0 text-foreground" {...props}>
+                                      <h2
+                                        className="text-lg font-semibold mb-2 mt-0 text-foreground"
+                                        {...props}
+                                      >
                                         {children}
                                       </h2>
                                     ),
                                     h3: ({ children, ...props }) => (
-                                      <h3 className="text-base font-medium mb-2 mt-0 text-foreground" {...props}>
+                                      <h3
+                                        className="text-base font-medium mb-2 mt-0 text-foreground"
+                                        {...props}
+                                      >
                                         {children}
                                       </h3>
                                     ),
                                     p: ({ children, ...props }) => (
-                                      <p className="mb-3 mt-0 leading-relaxed text-foreground" {...props}>
+                                      <p
+                                        className="mb-3 mt-0 leading-relaxed text-foreground"
+                                        {...props}
+                                      >
                                         {children}
                                       </p>
                                     ),
                                     ul: ({ children, ...props }) => (
-                                      <ul className="mb-3 mt-0 pl-6 list-disc space-y-1" {...props}>
+                                      <ul
+                                        className="mb-3 mt-0 pl-6 list-disc space-y-1"
+                                        {...props}
+                                      >
                                         {children}
                                       </ul>
                                     ),
                                     ol: ({ children, ...props }) => (
-                                      <ol className="mb-3 mt-0 pl-6 list-decimal space-y-1" {...props}>
+                                      <ol
+                                        className="mb-3 mt-0 pl-6 list-decimal space-y-1"
+                                        {...props}
+                                      >
                                         {children}
                                       </ol>
                                     ),
                                     li: ({ children, ...props }) => (
-                                      <li className="text-foreground leading-relaxed" {...props}>
+                                      <li
+                                        className="text-foreground leading-relaxed"
+                                        {...props}
+                                      >
                                         {children}
                                       </li>
                                     ),
                                     strong: ({ children, ...props }) => (
-                                      <strong className="font-semibold text-foreground" {...props}>
+                                      <strong
+                                        className="font-semibold text-foreground"
+                                        {...props}
+                                      >
                                         {children}
                                       </strong>
                                     ),
                                     em: ({ children, ...props }) => (
-                                      <em className="italic text-foreground" {...props}>
+                                      <em
+                                        className="italic text-foreground"
+                                        {...props}
+                                      >
                                         {children}
                                       </em>
                                     ),
                                     blockquote: ({ children, ...props }) => (
-                                      <blockquote className="border-l-4 border-primary/30 pl-4 my-2 italic text-foreground/80" {...props}>
+                                      <blockquote
+                                        className="border-l-4 border-primary/30 pl-4 my-2 italic text-foreground/80"
+                                        {...props}
+                                      >
                                         {children}
                                       </blockquote>
                                     ),
-                                    code: ({ children, className, ...props }) => {
-                                      const isInline = !className?.includes('language-');
+                                    code: ({
+                                      children,
+                                      className,
+                                      ...props
+                                    }) => {
+                                      const isInline =
+                                        !className?.includes("language-");
                                       return isInline ? (
-                                        <code 
-                                          className="bg-muted-foreground/10 text-foreground px-1.5 py-0.5 rounded text-sm font-mono" 
+                                        <code
+                                          className="bg-muted-foreground/10 text-foreground px-1.5 py-0.5 rounded text-sm font-mono"
                                           {...props}
                                         >
                                           {children}
                                         </code>
                                       ) : (
-                                        <code 
-                                          className="block bg-muted-foreground/10 text-foreground p-3 rounded text-sm font-mono overflow-x-auto whitespace-pre" 
+                                        <code
+                                          className="block bg-muted-foreground/10 text-foreground p-3 rounded text-sm font-mono overflow-x-auto whitespace-pre"
                                           {...props}
                                         >
                                           {children}
@@ -886,37 +986,58 @@ export default function PDFChatterPage() {
                                       );
                                     },
                                     pre: ({ children, ...props }) => (
-                                      <pre className="bg-muted-foreground/10 p-3 rounded overflow-x-auto mb-3 mt-0" {...props}>
+                                      <pre
+                                        className="bg-muted-foreground/10 p-3 rounded overflow-x-auto mb-3 mt-0"
+                                        {...props}
+                                      >
                                         {children}
                                       </pre>
                                     ),
                                     table: ({ children, ...props }) => (
                                       <div className="overflow-x-auto mb-3">
-                                        <table className="min-w-full border border-muted-foreground/20 rounded" {...props}>
+                                        <table
+                                          className="min-w-full border border-muted-foreground/20 rounded"
+                                          {...props}
+                                        >
                                           {children}
                                         </table>
                                       </div>
                                     ),
                                     thead: ({ children, ...props }) => (
-                                      <thead className="bg-muted-foreground/5" {...props}>
+                                      <thead
+                                        className="bg-muted-foreground/5"
+                                        {...props}
+                                      >
                                         {children}
                                       </thead>
                                     ),
                                     th: ({ children, ...props }) => (
-                                      <th className="border border-muted-foreground/20 px-3 py-2 text-left font-semibold text-foreground" {...props}>
+                                      <th
+                                        className="border border-muted-foreground/20 px-3 py-2 text-left font-semibold text-foreground"
+                                        {...props}
+                                      >
                                         {children}
                                       </th>
                                     ),
                                     td: ({ children, ...props }) => (
-                                      <td className="border border-muted-foreground/20 px-3 py-2 text-foreground" {...props}>
+                                      <td
+                                        className="border border-muted-foreground/20 px-3 py-2 text-foreground"
+                                        {...props}
+                                      >
                                         {children}
                                       </td>
                                     ),
                                     hr: ({ ...props }) => (
-                                      <hr className="border-muted-foreground/20 my-4" {...props} />
+                                      <hr
+                                        className="border-muted-foreground/20 my-4"
+                                        {...props}
+                                      />
                                     ),
                                     a: ({ children, ...props }) => (
-                                      <a className="text-primary hover:text-primary/80 underline" {...props}>
+                                      <a
+                                        className="text-primary hover:text-primary/80 underline"
+                                        {...props}
+                                      >
                                         {children}
                                       </a>
                                     ),
@@ -926,7 +1047,9 @@ export default function PDFChatterPage() {
                                 </ReactMarkdown>
                               </div>
                             ) : (
-                              <div className="whitespace-pre-wrap text-base">{message.content}</div>
+                              <div className="whitespace-pre-wrap text-base">
+                                {message.content}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -939,11 +1062,22 @@ export default function PDFChatterPage() {
                         <div className="max-w-[85%] rounded-lg p-4 bg-muted">
                           <div className="flex items-center space-x-3">
                             <div className="flex space-x-1">
-                              <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                              <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                              <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                              <div
+                                className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
+                                style={{ animationDelay: "0ms" }}
+                              ></div>
+                              <div
+                                className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
+                                style={{ animationDelay: "150ms" }}
+                              ></div>
+                              <div
+                                className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
+                                style={{ animationDelay: "300ms" }}
+                              ></div>
                             </div>
-                            <span className="text-sm text-muted-foreground font-medium">AI is thinking...</span>
+                            <span className="text-sm text-muted-foreground font-medium">
+                              AI is thinking...
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -961,22 +1095,32 @@ export default function PDFChatterPage() {
                 <Input
                   type="text"
                   placeholder={
-                    documents.filter(d => d.embedding_status === 'completed').length === 0
+                    documents.filter((d) => d.embedding_status === "completed")
+                      .length === 0
                       ? "Upload and process PDFs first to start chatting..."
                       : "Ask me anything about your documents..."
                   }
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  disabled={isSending || documents.filter(d => d.embedding_status === 'completed').length === 0}
+                  disabled={
+                    isSending ||
+                    documents.filter((d) => d.embedding_status === "completed")
+                      .length === 0
+                  }
                   className="flex-1 h-16 px-6 py-4 rounded-xl border-2 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all shadow-sm placeholder:text-lg"
                   style={{
-                    fontSize: '1.125rem', // 18px - More reasonable size
-                    lineHeight: '1.75rem'
+                    fontSize: "1.125rem", // 18px - More reasonable size
+                    lineHeight: "1.75rem",
                   }}
                 />
                 <Button
                   type="submit"
-                  disabled={!prompt.trim() || isSending || documents.filter(d => d.embedding_status === 'completed').length === 0}
+                  disabled={
+                    !prompt.trim() ||
+                    isSending ||
+                    documents.filter((d) => d.embedding_status === "completed")
+                      .length === 0
+                  }
                   size="lg"
                   className="px-6 h-16 text-lg font-medium rounded-xl"
                 >
