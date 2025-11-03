@@ -21,6 +21,9 @@ import {
 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { documentsAPI, chatAPI, queryAPI, authAPI } from '@/lib/api';
 import type { Document, ChatSession, QueryResponse } from '@/lib/api';
 
@@ -811,7 +814,8 @@ export default function PDFChatterPage() {
                             {message.role === 'assistant' ? (
                               <div className="prose prose-sm max-w-none prose-slate dark:prose-invert prose-headings:font-semibold prose-p:text-foreground prose-strong:text-foreground prose-li:text-foreground prose-code:text-foreground prose-pre:bg-muted-foreground/10">
                                 <ReactMarkdown 
-                                  remarkPlugins={[remarkGfm]}
+                                  remarkPlugins={[remarkGfm, remarkMath]}
+                                  rehypePlugins={[rehypeKatex]}
                                   components={{
                                     h1: ({ children, ...props }) => (
                                       <h1 className="text-xl font-bold mb-3 mt-0 text-foreground" {...props}>
