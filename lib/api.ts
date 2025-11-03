@@ -112,14 +112,21 @@ const getAuthHeaders = () => {
 // Helper function to handle API responses
 const handleResponse = async <T>(response: Response): Promise<T> => {
   if (!response.ok) {
-    const errorData = await response
-      .json()
-      .catch(() => ({ detail: "An error occurred" }));
-    throw new Error(
-      errorData.detail || `HTTP error! status: ${response.status}`,
-    );
+    let errorMessage = `HTTP error! status: ${response.status}`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.detail || errorData.message || errorMessage;
+    } catch {
+      // If response is not JSON, use status text
+      errorMessage = response.statusText || errorMessage;
+    }
+    throw new Error(errorMessage);
   }
-  return response.json();
+  try {
+    return await response.json();
+  } catch (error) {
+    throw new Error("Failed to parse response" + error);
+  }
 };
 
 // Authentication API
@@ -150,10 +157,19 @@ export const authAPI = {
   },
 
   async getCurrentUser(): Promise<User> {
-    const response = await fetch(`${API_BASE_URL}/me`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse<User>(response);
+    try {
+      const response = await fetch(`${API_BASE_URL}/me`, {
+        headers: getAuthHeaders(),
+      });
+      return handleResponse<User>(response);
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes("fetch")) {
+        throw new Error(
+          "Network error: Unable to connect to the server. Please check your connection.",
+        );
+      }
+      throw error;
+    }
   },
 
   async updateProfile(userData: Partial<User>): Promise<User> {
@@ -182,15 +198,20 @@ export const documentsAPI = {
   },
 
   async getDocuments(): Promise<Document[]> {
-    const response = await fetch(`${API_BASE_URL}/documents`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse<Document[]>(response);
+    try {
+      const response = await fetch(`${API_BASE_URL}/documents`, {
+        headers: getAuthHeaders(),
+      });
+      return handleResponse<Document[]>(response);
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes("fetch")) {
+        throw new Error("Network error: Unable to connect to the server.");
+      }
+      throw error;
+    }
   },
 
-  async deleteDocument(
-    documentId: string,
-  ): Promise<{
+  async deleteDocument(documentId: string): Promise<{
     message: string;
     document_id: string;
     embeddings_deleted: number;
@@ -308,9 +329,10 @@ export const queryAPI = {
       session_id?: string;
       new_chat?: boolean;
     },
-  ): Promise<ReadableStream> {
+    onChunk?: (content: string) => void,
+  ): Promise<QueryResponse> {
     const token = localStorage.getItem("token");
-    const response = await fetch(`${API_BASE_URL}/query-stream`, {
+    const response = await fetch(`${API_BASE_URL}/query/stream`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -331,7 +353,86 @@ export const queryAPI = {
       );
     }
 
-    return response.body!;
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Response body is not readable");
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullResponse = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Split by double newlines (SSE format)
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+      for (const event of lines) {
+        // Skip empty events
+        if (!event.trim()) continue;
+
+        // Process each line in the event (SSE events can have multiple lines)
+        const eventLines = event.split("\n");
+        for (const eventLine of eventLines) {
+          // SSE format: "data: {json}"
+          if (eventLine.startsWith("data: ")) {
+            try {
+              const jsonStr = eventLine.slice(6).trim();
+              if (!jsonStr) continue;
+
+              const data = JSON.parse(jsonStr);
+
+              if (data.error) {
+                throw new Error(
+                  data.content || "An error occurred during streaming",
+                );
+              }
+
+              // Check if streaming is done first
+              if (data.done) {
+                // Final event: content is empty, full_response contains complete response
+                return {
+                  answer: data.full_response || fullResponse,
+                  session_id: data.session_id || options?.session_id || "",
+                  session_name: data.session_name || "",
+                  is_new_session: data.is_new_session || false,
+                  message_count: data.message_count || 0,
+                };
+              }
+
+              // Process content chunk (can be empty string, which is valid)
+              if (data.content !== undefined) {
+                fullResponse += data.content;
+                if (onChunk && data.content) {
+                  // Only call onChunk if content is not empty
+                  onChunk(data.content);
+                }
+              }
+            } catch (parseError) {
+              // If JSON parsing fails, skip this line
+              console.warn("Failed to parse SSE data:", eventLine, parseError);
+            }
+          }
+          // Skip comment lines (SSE format: lines starting with :)
+          // Skip empty lines
+        }
+      }
+    }
+
+    // Fallback: return what we have
+    return {
+      answer: fullResponse,
+      session_id: options?.session_id || "",
+      session_name: "",
+      is_new_session: false,
+      message_count: 0,
+    };
   },
 
   async queryWithChatContext(
@@ -353,10 +454,17 @@ export const queryAPI = {
 // Stats API
 export const statsAPI = {
   async getUserStats(): Promise<UserStats> {
-    const response = await fetch(`${API_BASE_URL}/stats`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse<UserStats>(response);
+    try {
+      const response = await fetch(`${API_BASE_URL}/stats`, {
+        headers: getAuthHeaders(),
+      });
+      return handleResponse<UserStats>(response);
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes("fetch")) {
+        throw new Error("Network error: Unable to connect to the server.");
+      }
+      throw error;
+    }
   },
 
   async getAdminStats(): Promise<{
