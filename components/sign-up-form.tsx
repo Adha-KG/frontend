@@ -23,6 +23,9 @@ export function SignUpForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -40,11 +43,17 @@ export function SignUpForm({
     }
 
     try {
+      // Include first and last name as user metadata so it can be stored with the user record.
+      // Profile picture will be uploaded to the backend later; here we only capture the File.
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/protected`,
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+          },
         },
       });
       if (error) throw error;
@@ -66,6 +75,30 @@ export function SignUpForm({
         <CardContent>
           <form onSubmit={handleSignUp}>
             <div className="flex flex-col gap-6">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="first-name">First name</Label>
+                  <Input
+                    id="first-name"
+                    type="text"
+                    placeholder="First name"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="last-name">Last name</Label>
+                  <Input
+                    id="last-name"
+                    type="text"
+                    placeholder="Last name"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
+                </div>
+              </div>
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -101,6 +134,20 @@ export function SignUpForm({
                   onChange={(e) => setRepeatPassword(e.target.value)}
                 />
               </div>
+              <div className="grid gap-2">
+                <Label htmlFor="profile-picture">Profile picture</Label>
+                <input
+                  id="profile-picture"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setProfilePicture(e.target.files?.[0] ?? null)}
+                  className="file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-transparent"
+                />
+                {profilePicture && (
+                  <p className="text-sm text-muted-foreground">Selected: {profilePicture.name}</p>
+                )}
+              </div>
+
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Creating an account..." : "Sign up"}
