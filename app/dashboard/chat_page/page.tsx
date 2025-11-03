@@ -14,9 +14,7 @@ import {
   CheckCircle,
   Loader2,
   Plus,
-  MessageSquare,
-  Clock,
-  LogOut,
+  MessageSquare, LogOut,
   ArrowLeft,
   Trash2,
   RefreshCw
@@ -24,7 +22,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { documentsAPI, chatAPI, queryAPI, authAPI } from '@/lib/api';
-import type { Document, ChatSession, ChatMessage, QueryResponse } from '@/lib/api';
+import type { Document, ChatSession, QueryResponse } from '@/lib/api';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100MB total
