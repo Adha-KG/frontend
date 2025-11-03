@@ -51,11 +51,14 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname !== "/" &&
     !user &&
     !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth")
+    !request.nextUrl.pathname.startsWith("/auth") &&
+    !request.nextUrl.pathname.startsWith("/dashboard")
   ) {
     // no user, potentially respond by redirecting the user to the login page
+    // Note: /dashboard routes use custom JWT auth (checking localStorage on client-side)
+    // so we allow them to pass through without Supabase auth check
     const url = request.nextUrl.clone();
-    url.pathname = "/auth/login";
+    url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
