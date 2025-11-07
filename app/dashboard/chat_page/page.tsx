@@ -150,85 +150,15 @@ export default function PDFChatterPage() {
       setIsLoadingMessages(true);
       const chatMessages = await chatAPI.getChatMessages(sessionId, 50);
 
+      // Backend stores messages sequentially: user question, then assistant answer
+      // Messages alternate between user and assistant (even index = user, odd index = assistant)
       const formattedMessages: Message[] = chatMessages.map((msg, index) => {
-        let isUserMessage = false;
-
-        if (msg.content.startsWith("Q: ") && msg.content.includes("\nA: ")) {
-          return {
-            role: "user",
-            content: msg.content.substring(3).split("\nA: ")[0],
-            timestamp: msg.created_at,
-          };
-        }
-
-        const userIndicators = [
-          "?",
-          "what",
-          "how",
-          "why",
-          "when",
-          "where",
-          "who",
-          "which",
-          "explain",
-          "tell me",
-          "can you",
-          "could you",
-          "please",
-          "help me",
-          "i need",
-          "show me",
-        ];
-
-        const assistantIndicators = [
-          "based on",
-          "according to",
-          "the document",
-          "as mentioned",
-          "here is",
-          "here are",
-          "to answer",
-          "in summary",
-          "## ",
-          "### ",
-          "**",
-          "```",
-          "comprehensive",
-          "detailed explanation",
-          "study guide",
-        ];
-
-        const lowerContent = msg.content.toLowerCase();
-
-        const hasUserIndicators = userIndicators.some((indicator) =>
-          lowerContent.includes(indicator.toLowerCase()),
-        );
-
-        const hasAssistantIndicators = assistantIndicators.some((indicator) =>
-          lowerContent.includes(indicator.toLowerCase()),
-        );
-
-        const isLikelyQuestion =
-          msg.content.length < 500 && msg.content.endsWith("?");
-        const isLikelyResponse =
-          msg.content.length > 200 || msg.content.includes("\n\n");
-
-        const isEvenIndex = index % 2 === 0;
-
-        if (hasUserIndicators && !hasAssistantIndicators) {
-          isUserMessage = true;
-        } else if (hasAssistantIndicators && !hasUserIndicators) {
-          isUserMessage = false;
-        } else if (isLikelyQuestion) {
-          isUserMessage = true;
-        } else if (isLikelyResponse) {
-          isUserMessage = false;
-        } else {
-          isUserMessage = isEvenIndex;
-        }
+        // Determine role based on position (alternating pattern)
+        // First message (index 0) is user, then assistant, then user, etc.
+        const role = index % 2 === 0 ? "user" : "assistant";
 
         return {
-          role: isUserMessage ? "user" : "assistant",
+          role,
           content: msg.content,
           timestamp: msg.created_at,
         };
@@ -387,28 +317,24 @@ export default function PDFChatterPage() {
           session_id: sessionId,
         },
         (chunk: string) => {
-          // Update the assistant message with each chunk
+          // Update the assistant message with each chunk - create new objects to trigger React re-render
           setMessages((prev) => {
             const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage && lastMessage.role === "assistant") {
-              lastMessage.content += chunk;
+            const lastIndex = newMessages.length - 1;
+            if (lastIndex >= 0 && newMessages[lastIndex].role === "assistant") {
+              // Create a new message object instead of mutating
+              newMessages[lastIndex] = {
+                ...newMessages[lastIndex],
+                content: newMessages[lastIndex].content + chunk,
+              };
             }
             return newMessages;
           });
         },
       );
 
-      // Update the final message with complete response
-      setMessages((prev) => {
-        const newMessages = [...prev];
-        const lastMessage = newMessages[newMessages.length - 1];
-        if (lastMessage && lastMessage.role === "assistant") {
-          lastMessage.content = response.answer;
-        }
-        return newMessages;
-      });
-
+      // No need to update the message content again - it's already built up from streaming
+      // Just update session info if needed
       if (response.is_new_session) {
         const updatedSessions = await chatAPI.getChatSessions();
         setChatSessions(updatedSessions);
