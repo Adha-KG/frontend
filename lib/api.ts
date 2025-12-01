@@ -486,3 +486,125 @@ export const healthAPI = {
     return handleResponse(response);
   },
 };
+
+// Flashcard types
+export interface Flashcard {
+  front: string;
+  back: string;
+}
+
+export interface FlashcardGenerateRequest {
+  topic?: string;
+  document_ids?: string[];
+  num_flashcards?: number;
+}
+
+export interface FlashcardGenerateResponse {
+  flashcards: Flashcard[];
+  topic?: string;
+  num_generated: number;
+}
+
+// Flashcards API
+export const flashcardsAPI = {
+  async generateFlashcards(
+    request: FlashcardGenerateRequest,
+  ): Promise<FlashcardGenerateResponse> {
+    const response = await fetch(`${API_BASE_URL}/flashcards/generate`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse<FlashcardGenerateResponse>(response);
+  },
+
+  async generateFlashcardsStream(
+    request: FlashcardGenerateRequest,
+    onProgress?: (status: string, message: string) => void,
+    onComplete?: (flashcards: Flashcard[]) => void,
+    onError?: (error: string) => void,
+  ): Promise<Flashcard[]> {
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${API_BASE_URL}/flashcards/generate/stream`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorData = await response
+        .json()
+        .catch(() => ({ detail: "An error occurred" }));
+      const errorMsg =
+        errorData.detail || `HTTP error! status: ${response.status}`;
+      if (onError) onError(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      const errorMsg = "Response body is not readable";
+      if (onError) onError(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let flashcards: Flashcard[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || "";
+
+      for (const event of lines) {
+        if (!event.trim()) continue;
+
+        const eventLines = event.split("\n");
+        for (const eventLine of eventLines) {
+          if (eventLine.startsWith("data: ")) {
+            try {
+              const jsonStr = eventLine.slice(6).trim();
+              if (!jsonStr) continue;
+
+              const data = JSON.parse(jsonStr);
+
+              if (data.error) {
+                const errorMsg = data.message || "An error occurred";
+                if (onError) onError(errorMsg);
+                throw new Error(errorMsg);
+              }
+
+              // Handle status updates
+              if (data.status && onProgress) {
+                onProgress(data.status, data.message || "");
+              }
+
+              // Handle completion
+              if (data.done) {
+                if (data.flashcards) {
+                  flashcards = data.flashcards;
+                }
+                if (onComplete && flashcards.length > 0) {
+                  onComplete(flashcards);
+                }
+                return flashcards;
+              }
+            } catch (parseError) {
+              console.warn("Failed to parse SSE data:", eventLine, parseError);
+            }
+          }
+        }
+      }
+    }
+
+    return flashcards;
+  },
+};

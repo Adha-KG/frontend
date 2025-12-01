@@ -1,5 +1,17 @@
 # Frontend Project Guidelines
 
+## Project Description
+
+**Adha KG - AI-Powered Student Helper** is a modern web application designed to help students streamline their learning process through intelligent document management and AI-powered interactions. The application enables users to:
+
+- **Upload and Process PDF Documents**: Upload PDF files and extract text information for instant access and analysis
+- **AI-Powered Chat**: Engage in intelligent conversations with uploaded documents using advanced AI technology
+- **Streamlined Learning**: Simplify study workflows and enhance understanding of complex topics through interactive document exploration
+
+Built with **Next.js** and **Supabase**, the application provides a secure, scalable platform for students to manage their study materials and interact with them through natural language conversations.
+
+---
+
 This document explains how to work with this project's frontend codebase.  
 Please follow these instructions to ensure consistency and avoid common issues.
 
