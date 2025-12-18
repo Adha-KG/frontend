@@ -35,6 +35,7 @@ import {
   FolderOpen,
   MessageCircle,
   CreditCard,
+  StickyNote,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -146,13 +147,15 @@ export default function Dashboard() {
     }
   };
 
-  const navigateToModule = (module: "reader" | "chat" | "flashcard") => {
+  const navigateToModule = (module: "reader" | "chat" | "flashcard" | "notes") => {
     if (module === "reader") {
       router.push("/dashboard/pdf_Reader");
     } else if (module === "chat") {
       router.push("/dashboard/chat_page");
     } else if (module === "flashcard") {
       router.push("/dashboard/flashcards");
+    } else if (module === "notes") {
+      router.push("/dashboard/notes");
     }
   };
 
@@ -328,6 +331,17 @@ export default function Dashboard() {
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
                     Flashcards
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      navigateToModule("notes");
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <StickyNote className="h-4 w-4 mr-2" />
+                    AI Notes
                   </Button>
                   <Button
                     variant="ghost"
@@ -517,6 +531,27 @@ export default function Dashboard() {
                         <p className="text-sm text-muted-foreground leading-relaxed">
                           Generate intelligent flashcards from your PDF content
                           automatically
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    {/* AI Notes Module */}
+                    <Card
+                      className="cursor-pointer hover:shadow-md transition-shadow border"
+                      onClick={() => navigateToModule("notes")}
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                            <StickyNote className="h-6 w-6 text-foreground" />
+                          </div>
+                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <h4 className="text-lg font-semibold mb-2">
+                          AI Notes Generator
+                        </h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          Transform PDFs into comprehensive study notes with customizable styles
                         </p>
                       </CardContent>
                     </Card>

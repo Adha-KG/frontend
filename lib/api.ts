@@ -100,6 +100,59 @@ export interface UserStats {
   };
 }
 
+// Notes API types
+export interface NoteFile {
+  id: string;
+  filename: string;
+  original_filename: string;
+  file_path: string;
+  sha256: string;
+  file_size: number;
+  status: "uploaded" | "processing" | "indexed" | "summarizing" | "completed" | "failed";
+  error?: string;
+  user_prompt?: string;
+  created_at: string;
+  updated_at: string;
+  user_id?: string;
+}
+
+export interface NoteUploadResponse {
+  file_id: string;
+  task_id: string;
+  filename: string;
+  status: string;
+  message: string;
+}
+
+export interface NoteContent {
+  file_id: string;
+  note_text: string;
+  metadata?: {
+    total_chunks?: number;
+    synthesis_method?: string;
+    note_style?: string;
+    [key: string]: any;
+  };
+  created_at: string;
+  // Optional fields
+  original_filename?: string;
+  llm_provider?: string;
+  llm_model?: string;
+  updated_at?: string;
+}
+
+export interface NoteAnswer {
+  answer: string;
+  source_chunks: Array<{
+    chunk_text: string;
+    chunk_index: number;
+    page_start?: number;
+    page_end?: number;
+  }>;
+}
+
+export type NoteStyle = "short" | "moderate" | "descriptive";
+
 // Helper function to get auth headers
 const getAuthHeaders = () => {
   const token = localStorage.getItem("token");
@@ -473,6 +526,134 @@ export const statsAPI = {
     status: string;
   }> {
     const response = await fetch(`${API_BASE_URL}/admin/stats`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// Notes API
+export const notesAPI = {
+  /**
+   * Upload a PDF file for note generation
+   */
+  async uploadPDF(
+    file: File,
+    noteStyle: NoteStyle = "moderate",
+    userPrompt?: string,
+  ): Promise<NoteUploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("note_style", noteStyle);
+    if (userPrompt) {
+      formData.append("user_prompt", userPrompt);
+    }
+
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${API_BASE_URL}/notes/upload`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        // Don't set Content-Type for FormData - browser will set it with boundary
+      },
+      body: formData,
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Get status of a file
+   */
+  async getFileStatus(fileId: string): Promise<NoteFile> {
+    const response = await fetch(`${API_BASE_URL}/notes/status/${fileId}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * List all files with pagination
+   */
+  async listFiles(
+    limit: number = 10,
+    offset: number = 0,
+  ): Promise<{ files: NoteFile[]; total: number }> {
+    const response = await fetch(
+      `${API_BASE_URL}/notes/files?limit=${limit}&offset=${offset}`,
+      {
+        headers: getAuthHeaders(),
+      },
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Get generated notes for a file
+   */
+  async getNotes(fileId: string): Promise<NoteContent> {
+    const response = await fetch(`${API_BASE_URL}/notes/${fileId}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Download notes as markdown file
+   */
+  async downloadNotesMarkdown(fileId: string): Promise<Blob> {
+    const response = await fetch(
+      `${API_BASE_URL}/notes/${fileId}/download/markdown`,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to download notes: ${response.statusText}`);
+    }
+    return response.blob();
+  },
+
+  /**
+   * Download notes as PDF
+   */
+  async downloadNotesPDF(fileId: string): Promise<Blob> {
+    const response = await fetch(
+      `${API_BASE_URL}/notes/${fileId}/download/pdf`,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to download PDF: ${response.statusText}`);
+    }
+    return response.blob();
+  },
+
+  /**
+   * Ask a question about a specific file
+   */
+  async askQuestion(
+    fileId: string,
+    question: string,
+  ): Promise<NoteAnswer> {
+    const response = await fetch(`${API_BASE_URL}/notes/${fileId}/ask`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ question }),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Delete a file and all associated data
+   */
+  async deleteFile(fileId: string): Promise<{ message: string }> {
+    const response = await fetch(`${API_BASE_URL}/notes/files/${fileId}`, {
+      method: "DELETE",
       headers: getAuthHeaders(),
     });
     return handleResponse(response);
