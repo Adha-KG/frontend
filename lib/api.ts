@@ -159,6 +159,101 @@ export interface NoteAnswer {
 
 export type NoteStyle = "short" | "moderate" | "descriptive";
 
+// Quiz API types
+export interface QuizQuestion {
+  id: string;
+  question_text: string;
+  options: string[]; // Always 4 options
+  correct_answer: number; // 0-3 index
+  explanation?: string;
+  question_number: number;
+}
+
+export interface QuizResponse {
+  id: string;
+  user_id: string;
+  title?: string;
+  document_ids: string[];
+  num_questions: number;
+  time_limit_minutes: number;
+  difficulty?: "easy" | "medium" | "hard";
+  status: "generating" | "ready" | "failed";
+  questions?: QuizQuestion[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuizListResponse {
+  id: string;
+  user_id: string;
+  title?: string;
+  document_ids: string[];
+  num_questions: number;
+  time_limit_minutes: number;
+  difficulty?: "easy" | "medium" | "hard";
+  status: "generating" | "ready" | "failed";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuizAnswerResponse {
+  id: string;
+  question_id: string;
+  selected_answer?: number; // 0-3
+  is_correct?: boolean;
+  time_spent_seconds?: number;
+  answered_at?: string;
+}
+
+export interface QuizAttemptResponse {
+  id: string;
+  quiz_id: string;
+  user_id: string;
+  started_at: string;
+  completed_at?: string;
+  time_spent_seconds?: number;
+  status: "in_progress" | "completed" | "timeout" | "abandoned";
+  score?: number; // correct answers count
+  total_questions: number;
+  percentage_score?: number;
+  answers?: QuizAnswerResponse[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuizAttemptListResponse {
+  id: string;
+  quiz_id: string;
+  user_id: string;
+  started_at: string;
+  completed_at?: string;
+  time_spent_seconds?: number;
+  status: "in_progress" | "completed" | "timeout" | "abandoned";
+  score?: number;
+  total_questions: number;
+  percentage_score?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuizGenerateRequest {
+  document_ids: string[];
+  num_questions: number;
+  time_limit_minutes: number;
+  difficulty?: "easy" | "medium" | "hard";
+  title?: string;
+}
+
+export interface QuizStreamEvent {
+  status: string;
+  message?: string;
+  quiz_id?: string;
+  quiz?: QuizResponse;
+  questions?: QuizQuestion[];
+  done: boolean;
+  error?: boolean;
+}
+
 // Helper function to get auth headers
 const getAuthHeaders = () => {
   const token = localStorage.getItem("token");
@@ -660,6 +755,189 @@ export const notesAPI = {
       headers: getAuthHeaders(),
     });
     return handleResponse(response);
+  },
+};
+
+// Quiz API
+export const quizAPI = {
+  /**
+   * Generate a quiz synchronously
+   */
+  async generateQuiz(request: QuizGenerateRequest): Promise<QuizResponse> {
+    const response = await fetch(`${API_BASE_URL}/quizzes/generate`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse<QuizResponse>(response);
+  },
+
+  /**
+   * Generate a quiz with streaming progress updates
+   */
+  async generateQuizStream(
+    request: QuizGenerateRequest,
+    onEvent?: (event: QuizStreamEvent) => void,
+  ): Promise<QuizResponse> {
+    const token = localStorage.getItem("token");
+
+    // Send initial status event if callback provided
+    if (onEvent) {
+      onEvent({
+        status: "generating",
+        message: "Generating quiz...",
+        done: false,
+      });
+    }
+
+    const response = await fetch(`${API_BASE_URL}/quizzes/generate/stream`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorData = await response
+        .json()
+        .catch(() => ({ detail: "An error occurred" }));
+      throw new Error(
+        errorData.detail || `HTTP error! status: ${response.status}`,
+      );
+    }
+
+    const quiz: QuizResponse = await response.json();
+
+    // Send completion event if callback provided
+    if (onEvent) {
+      onEvent({
+        status: "complete",
+        message: `Generated ${quiz.num_questions} questions`,
+        quiz: quiz,
+        done: true,
+      });
+    }
+
+    return quiz;
+  },
+
+  /**
+   * Get all quizzes for the current user
+   */
+  async getQuizzes(): Promise<QuizListResponse[]> {
+    const response = await fetch(`${API_BASE_URL}/quizzes`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<QuizListResponse[]>(response);
+  },
+
+  /**
+   * Get quiz details by ID
+   */
+  async getQuiz(quizId: string): Promise<QuizResponse> {
+    const response = await fetch(`${API_BASE_URL}/quizzes/${quizId}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<QuizResponse>(response);
+  },
+
+  /**
+   * Start a quiz attempt
+   */
+  async startAttempt(quizId: string): Promise<QuizAttemptResponse> {
+    const response = await fetch(`${API_BASE_URL}/quizzes/${quizId}/attempts`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({}),
+    });
+    return handleResponse<QuizAttemptResponse>(response);
+  },
+
+  /**
+   * Submit an answer for a question
+   */
+  async submitAnswer(
+    attemptId: string,
+    questionId: string,
+    selectedAnswer: number,
+    timeSpentSeconds?: number,
+  ): Promise<QuizAnswerResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/quizzes/attempts/${attemptId}/answers`,
+      {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          question_id: questionId,
+          selected_answer: selectedAnswer,
+          time_spent_seconds: timeSpentSeconds,
+        }),
+      },
+    );
+    return handleResponse<QuizAnswerResponse>(response);
+  },
+
+  /**
+   * Complete a quiz attempt
+   */
+  async completeAttempt(
+    attemptId: string,
+    timeSpentSeconds?: number,
+  ): Promise<QuizAttemptResponse> {
+    const url = new URL(
+      `${API_BASE_URL}/quizzes/attempts/${attemptId}/complete`,
+    );
+    if (timeSpentSeconds !== undefined) {
+      url.searchParams.append(
+        "time_spent_seconds",
+        timeSpentSeconds.toString(),
+      );
+    }
+
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<QuizAttemptResponse>(response);
+  },
+
+  /**
+   * Abandon a quiz attempt
+   */
+  async abandonAttempt(attemptId: string): Promise<QuizAttemptResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/quizzes/attempts/${attemptId}/abandon`,
+      {
+        method: "PUT",
+        headers: getAuthHeaders(),
+      },
+    );
+    return handleResponse<QuizAttemptResponse>(response);
+  },
+
+  /**
+   * Get attempt details
+   */
+  async getAttempt(attemptId: string): Promise<QuizAttemptResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/quizzes/attempts/${attemptId}`,
+      {
+        headers: getAuthHeaders(),
+      },
+    );
+    return handleResponse<QuizAttemptResponse>(response);
+  },
+
+  /**
+   * Get all attempts for a quiz
+   */
+  async getQuizAttempts(quizId: string): Promise<QuizAttemptListResponse[]> {
+    const response = await fetch(`${API_BASE_URL}/quizzes/${quizId}/attempts`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<QuizAttemptListResponse[]>(response);
   },
 };
 
