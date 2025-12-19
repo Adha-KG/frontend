@@ -108,7 +108,13 @@ export interface NoteFile {
   file_path: string;
   sha256: string;
   file_size: number;
-  status: "uploaded" | "processing" | "indexed" | "summarizing" | "completed" | "failed";
+  status:
+    | "uploaded"
+    | "processing"
+    | "indexed"
+    | "summarizing"
+    | "completed"
+    | "failed";
   error?: string;
   user_prompt?: string;
   created_at: string;
@@ -131,7 +137,7 @@ export interface NoteContent {
     total_chunks?: number;
     synthesis_method?: string;
     note_style?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   created_at: string;
   // Optional fields
@@ -636,10 +642,7 @@ export const notesAPI = {
   /**
    * Ask a question about a specific file
    */
-  async askQuestion(
-    fileId: string,
-    question: string,
-  ): Promise<NoteAnswer> {
+  async askQuestion(fileId: string, question: string): Promise<NoteAnswer> {
     const response = await fetch(`${API_BASE_URL}/notes/${fileId}/ask`, {
       method: "POST",
       headers: getAuthHeaders(),
