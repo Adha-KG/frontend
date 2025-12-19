@@ -147,7 +147,9 @@ export default function Dashboard() {
     }
   };
 
-  const navigateToModule = (module: "reader" | "chat" | "flashcard" | "notes") => {
+  const navigateToModule = (
+    module: "reader" | "chat" | "flashcard" | "notes",
+  ) => {
     if (module === "reader") {
       router.push("/dashboard/pdf_Reader");
     } else if (module === "chat") {
@@ -342,6 +344,17 @@ export default function Dashboard() {
                   >
                     <StickyNote className="h-4 w-4 mr-2" />
                     AI Notes
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      router.push("/dashboard/quizzes");
+                      setSidebarOpen(false);
+                    }}
+                  >
+                    <BookOpenCheck className="h-4 w-4 mr-2" />
+                    Quizzes
                   </Button>
                   <Button
                     variant="ghost"
@@ -551,7 +564,8 @@ export default function Dashboard() {
                           AI Notes Generator
                         </h4>
                         <p className="text-sm text-muted-foreground leading-relaxed">
-                          Transform PDFs into comprehensive study notes with customizable styles
+                          Transform PDFs into comprehensive study notes with
+                          customizable styles
                         </p>
                       </CardContent>
                     </Card>
