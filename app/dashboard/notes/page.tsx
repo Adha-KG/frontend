@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  notesAPI,
-  NoteFile,
-  NoteContent,
-  NoteStyle,
-} from "@/lib/api";
+import { notesAPI, NoteFile, NoteContent, NoteStyle } from "@/lib/api";
 import {
   Upload,
   FileText,
@@ -55,6 +50,38 @@ export default function NotesPage() {
   const [userPrompt, setUserPrompt] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const loadFiles = async () => {
+    try {
+      const response = await notesAPI.listFiles(50, 0);
+      setFiles(response.files);
+    } catch (err: unknown) {
+      console.error("Failed to load files:", err);
+      setError(err instanceof Error ? err.message : "Failed to load files");
+    }
+  };
+
+  const refreshSelectedFile = useCallback(async () => {
+    if (!selectedFile || !selectedFile.id) return;
+
+    try {
+      const updatedFile = await notesAPI.getFileStatus(selectedFile.id);
+      setSelectedFile(updatedFile);
+
+      // If file just completed, load the notes
+      if (
+        updatedFile.status === "completed" &&
+        selectedFile.status !== "completed"
+      ) {
+        console.log("File just completed! Loading notes...");
+        const content = await notesAPI.getNotes(updatedFile.id);
+        console.log("Auto-loaded notes:", content);
+        setNoteContent(content);
+      }
+    } catch (err: unknown) {
+      console.error("Failed to refresh file status:", err);
+    }
+  }, [selectedFile]);
+
   // Check authentication
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -68,7 +95,11 @@ export default function NotesPage() {
   // Poll for status updates every 5 seconds when there are processing files
   useEffect(() => {
     const hasProcessing = files.some(
-      (f) => f.status === "processing" || f.status === "indexed" || f.status === "summarizing" || f.status === "uploaded"
+      (f) =>
+        f.status === "processing" ||
+        f.status === "indexed" ||
+        f.status === "summarizing" ||
+        f.status === "uploaded",
     );
     if (!hasProcessing) return;
 
@@ -81,36 +112,7 @@ export default function NotesPage() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [files, selectedFile]);
-
-  const loadFiles = async () => {
-    try {
-      const response = await notesAPI.listFiles(50, 0);
-      setFiles(response.files);
-    } catch (err: any) {
-      console.error("Failed to load files:", err);
-      setError(err.message || "Failed to load files");
-    }
-  };
-
-  const refreshSelectedFile = async () => {
-    if (!selectedFile || !selectedFile.id) return;
-
-    try {
-      const updatedFile = await notesAPI.getFileStatus(selectedFile.id);
-      setSelectedFile(updatedFile);
-
-      // If file just completed, load the notes
-      if (updatedFile.status === "completed" && selectedFile.status !== "completed") {
-        console.log("File just completed! Loading notes...");
-        const content = await notesAPI.getNotes(updatedFile.id);
-        console.log("Auto-loaded notes:", content);
-        setNoteContent(content);
-      }
-    } catch (err: any) {
-      console.error("Failed to refresh file status:", err);
-    }
-  };
+  }, [files, selectedFile, refreshSelectedFile]);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -142,7 +144,11 @@ export default function NotesPage() {
     setError(null);
 
     try {
-      const response = await notesAPI.uploadPDF(selectedPdfFile, noteStyle, userPrompt || undefined);
+      const response = await notesAPI.uploadPDF(
+        selectedPdfFile,
+        noteStyle,
+        userPrompt || undefined,
+      );
 
       // Clear form
       setSelectedPdfFile(null);
@@ -156,12 +162,12 @@ export default function NotesPage() {
 
       // Find and select the new file
       const newFiles = await notesAPI.listFiles(50, 0);
-      const newFile = newFiles.files.find(f => f.id === response.file_id);
+      const newFile = newFiles.files.find((f) => f.id === response.file_id);
       if (newFile) {
         handleSelectFile(newFile);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to upload file");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to upload file");
     } finally {
       setIsUploading(false);
     }
@@ -181,9 +187,9 @@ export default function NotesPage() {
         console.log("Received notes content:", content);
         console.log("Note text length:", content.note_text?.length || 0);
         setNoteContent(content);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Failed to load notes:", err);
-        setError(err.message || "Failed to load notes");
+        setError(err instanceof Error ? err.message : "Failed to load notes");
       } finally {
         setIsLoading(false);
       }
@@ -199,8 +205,8 @@ export default function NotesPage() {
     try {
       const response = await notesAPI.askQuestion(selectedFile.id, question);
       setAnswer(response.answer);
-    } catch (err: any) {
-      setError(err.message || "Failed to get answer");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to get answer");
     } finally {
       setIsAsking(false);
     }
@@ -217,8 +223,8 @@ export default function NotesPage() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (err: any) {
-      setError(err.message || "Failed to download notes");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to download notes");
     }
   };
 
@@ -233,8 +239,8 @@ export default function NotesPage() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (err: any) {
-      setError(err.message || "Failed to download PDF");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to download PDF");
     }
   };
 
@@ -248,8 +254,8 @@ export default function NotesPage() {
         setNoteContent(null);
       }
       await loadFiles();
-    } catch (err: any) {
-      setError(err.message || "Failed to delete file");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete file");
     }
   };
 
@@ -270,7 +276,12 @@ export default function NotesPage() {
   };
 
   const getStatusIcon = (status: string) => {
-    if (status === "processing" || status === "indexed" || status === "summarizing" || status === "uploaded") {
+    if (
+      status === "processing" ||
+      status === "indexed" ||
+      status === "summarizing" ||
+      status === "uploaded"
+    ) {
       return <Loader2 className="h-3 w-3 animate-spin" />;
     }
     return null;
@@ -306,7 +317,9 @@ export default function NotesPage() {
               onClick={loadFiles}
               disabled={isLoading}
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+              />
               Refresh
             </Button>
           </div>
@@ -351,7 +364,9 @@ export default function NotesPage() {
                   {selectedPdfFile && (
                     <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
                       <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm flex-1 truncate">{selectedPdfFile.name}</span>
+                      <span className="text-sm flex-1 truncate">
+                        {selectedPdfFile.name}
+                      </span>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -372,29 +387,36 @@ export default function NotesPage() {
                 <div className="space-y-2">
                   <Label>Note Style</Label>
                   <div className="grid grid-cols-3 gap-2">
-                    {(["short", "moderate", "descriptive"] as NoteStyle[]).map((style) => (
-                      <Button
-                        key={style}
-                        variant={noteStyle === style ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setNoteStyle(style)}
-                        className="capitalize"
-                        disabled={isUploading}
-                      >
-                        {style}
-                      </Button>
-                    ))}
+                    {(["short", "moderate", "descriptive"] as NoteStyle[]).map(
+                      (style) => (
+                        <Button
+                          key={style}
+                          variant={noteStyle === style ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setNoteStyle(style)}
+                          className="capitalize"
+                          disabled={isUploading}
+                        >
+                          {style}
+                        </Button>
+                      ),
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {noteStyle === "short" && "Brief bullet points, only key facts"}
-                    {noteStyle === "moderate" && "Balanced notes with main points and details"}
-                    {noteStyle === "descriptive" && "Comprehensive notes with full explanations"}
+                    {noteStyle === "short" &&
+                      "Brief bullet points, only key facts"}
+                    {noteStyle === "moderate" &&
+                      "Balanced notes with main points and details"}
+                    {noteStyle === "descriptive" &&
+                      "Comprehensive notes with full explanations"}
                   </p>
                 </div>
 
                 {/* Custom Instructions */}
                 <div className="space-y-2">
-                  <Label htmlFor="user-prompt">Custom Instructions (Optional)</Label>
+                  <Label htmlFor="user-prompt">
+                    Custom Instructions (Optional)
+                  </Label>
                   <Input
                     id="user-prompt"
                     placeholder="E.g., Focus on methodology..."
@@ -471,6 +493,7 @@ export default function NotesPage() {
                               handleDeleteFile(file.id);
                             }}
                             className="text-muted-foreground hover:text-destructive ml-2"
+                            aria-label={`Delete ${file.original_filename}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -490,7 +513,9 @@ export default function NotesPage() {
                           </span>
                         </div>
                         {file.error && (
-                          <p className="text-xs text-destructive mt-1">{file.error}</p>
+                          <p className="text-xs text-destructive mt-1">
+                            {file.error}
+                          </p>
                         )}
                       </div>
                     ))
@@ -513,7 +538,9 @@ export default function NotesPage() {
               <Card className="h-[600px] flex items-center justify-center">
                 <CardContent className="text-center">
                   <StickyNote className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-                  <h3 className="text-lg font-semibold mb-2">No File Selected</h3>
+                  <h3 className="text-lg font-semibold mb-2">
+                    No File Selected
+                  </h3>
                   <p className="text-sm text-muted-foreground">
                     Upload a PDF or select a file to view notes
                   </p>
@@ -529,7 +556,10 @@ export default function NotesPage() {
                         {selectedFile.original_filename}
                       </CardTitle>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Status: <span className="capitalize">{selectedFile.status}</span>
+                        Status:{" "}
+                        <span className="capitalize">
+                          {selectedFile.status}
+                        </span>
                       </p>
                     </div>
                     {selectedFile.status === "completed" && noteContent && (
@@ -540,7 +570,7 @@ export default function NotesPage() {
                           onClick={() =>
                             handleDownloadMarkdown(
                               selectedFile.id,
-                              selectedFile.original_filename
+                              selectedFile.original_filename,
                             )
                           }
                         >
@@ -553,7 +583,7 @@ export default function NotesPage() {
                           onClick={() =>
                             handleDownloadPDF(
                               selectedFile.id,
-                              selectedFile.original_filename
+                              selectedFile.original_filename,
                             )
                           }
                         >
@@ -582,7 +612,9 @@ export default function NotesPage() {
                         {isLoading ? (
                           <div className="flex items-center justify-center py-12">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                            <p className="ml-2 text-sm text-muted-foreground">Loading notes...</p>
+                            <p className="ml-2 text-sm text-muted-foreground">
+                              Loading notes...
+                            </p>
                           </div>
                         ) : noteContent && noteContent.note_text ? (
                           <div suppressHydrationWarning>
@@ -591,29 +623,171 @@ export default function NotesPage() {
                                 remarkPlugins={[remarkGfm, remarkMath]}
                                 rehypePlugins={[rehypeKatex]}
                                 components={{
-                                  h1: ({node, ...props}) => <h1 className="text-3xl font-bold mt-6 mb-4" {...props} />,
-                                  h2: ({node, ...props}) => <h2 className="text-2xl font-bold mt-5 mb-3" {...props} />,
-                                  h3: ({node, ...props}) => <h3 className="text-xl font-semibold mt-4 mb-2" {...props} />,
-                                  h4: ({node, ...props}) => <h4 className="text-lg font-semibold mt-3 mb-2" {...props} />,
-                                  p: ({node, ...props}) => <p className="mb-4 leading-7 text-foreground" {...props} />,
-                                  ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-4 space-y-2" {...props} />,
-                                  ol: ({node, ...props}) => <ol className="list-decimal ml-6 mb-4 space-y-2" {...props} />,
-                                  li: ({node, ...props}) => <li className="leading-7 text-foreground" {...props} />,
-                                  code: ({node, inline, ...props}: any) =>
-                                    inline
-                                      ? <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono text-foreground" {...props} />
-                                      : <code className="block bg-muted p-4 rounded-lg text-sm font-mono overflow-x-auto mb-4 text-foreground" {...props} />,
-                                  blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary pl-4 italic my-4 text-muted-foreground" {...props} />,
-                                  a: ({node, ...props}) => <a className="text-primary hover:underline" {...props} />,
-                                  strong: ({node, ...props}) => <strong className="font-bold text-foreground" {...props} />,
-                                  em: ({node, ...props}) => <em className="italic text-foreground" {...props} />,
-                                  hr: ({node, ...props}) => <hr className="my-6 border-border" {...props} />,
-                                  table: ({node, ...props}) => <table className="w-full border-collapse mb-4 border border-border" {...props} />,
-                                  thead: ({node, ...props}) => <thead className="bg-muted" {...props} />,
-                                  tbody: ({node, ...props}) => <tbody {...props} />,
-                                  tr: ({node, ...props}) => <tr className="border-b border-border" {...props} />,
-                                  th: ({node, ...props}) => <th className="px-4 py-2 text-left font-semibold text-foreground" {...props} />,
-                                  td: ({node, ...props}) => <td className="px-4 py-2 text-foreground" {...props} />,
+                                  h1: ({ children, ...props }) => (
+                                    <h1
+                                      className="text-3xl font-bold mt-6 mb-4"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </h1>
+                                  ),
+                                  h2: ({ children, ...props }) => (
+                                    <h2
+                                      className="text-2xl font-bold mt-5 mb-3"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </h2>
+                                  ),
+                                  h3: ({ children, ...props }) => (
+                                    <h3
+                                      className="text-xl font-semibold mt-4 mb-2"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </h3>
+                                  ),
+                                  h4: ({ children, ...props }) => (
+                                    <h4
+                                      className="text-lg font-semibold mt-3 mb-2"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </h4>
+                                  ),
+                                  p: ({ children, ...props }) => (
+                                    <p
+                                      className="mb-4 leading-7 text-foreground"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </p>
+                                  ),
+                                  ul: ({ children, ...props }) => (
+                                    <ul
+                                      className="list-disc ml-6 mb-4 space-y-2"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </ul>
+                                  ),
+                                  ol: ({ children, ...props }) => (
+                                    <ol
+                                      className="list-decimal ml-6 mb-4 space-y-2"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </ol>
+                                  ),
+                                  li: ({ children, ...props }) => (
+                                    <li
+                                      className="leading-7 text-foreground"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </li>
+                                  ),
+                                  code: ({
+                                    children,
+                                    className,
+                                    ...props
+                                  }: React.ComponentPropsWithoutRef<"code">) => {
+                                    const isInline =
+                                      !className?.includes("language-");
+                                    return isInline ? (
+                                      <code
+                                        className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono text-foreground"
+                                        {...props}
+                                      >
+                                        {children}
+                                      </code>
+                                    ) : (
+                                      <code
+                                        className="block bg-muted p-4 rounded-lg text-sm font-mono overflow-x-auto mb-4 text-foreground"
+                                        {...props}
+                                      >
+                                        {children}
+                                      </code>
+                                    );
+                                  },
+                                  blockquote: ({ children, ...props }) => (
+                                    <blockquote
+                                      className="border-l-4 border-primary pl-4 italic my-4 text-muted-foreground"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </blockquote>
+                                  ),
+                                  a: ({ children, ...props }) => (
+                                    <a
+                                      className="text-primary hover:underline"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </a>
+                                  ),
+                                  strong: ({ children, ...props }) => (
+                                    <strong
+                                      className="font-bold text-foreground"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </strong>
+                                  ),
+                                  em: ({ children, ...props }) => (
+                                    <em
+                                      className="italic text-foreground"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </em>
+                                  ),
+                                  hr: ({ ...props }) => (
+                                    <hr
+                                      className="my-6 border-border"
+                                      {...props}
+                                    />
+                                  ),
+                                  table: ({ children, ...props }) => (
+                                    <table
+                                      className="w-full border-collapse mb-4 border border-border"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </table>
+                                  ),
+                                  thead: ({ children, ...props }) => (
+                                    <thead className="bg-muted" {...props}>
+                                      {children}
+                                    </thead>
+                                  ),
+                                  tbody: ({ children, ...props }) => (
+                                    <tbody {...props}>{children}</tbody>
+                                  ),
+                                  tr: ({ children, ...props }) => (
+                                    <tr
+                                      className="border-b border-border"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </tr>
+                                  ),
+                                  th: ({ children, ...props }) => (
+                                    <th
+                                      className="px-4 py-2 text-left font-semibold text-foreground"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </th>
+                                  ),
+                                  td: ({ children, ...props }) => (
+                                    <td
+                                      className="px-4 py-2 text-foreground"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </td>
+                                  ),
                                 }}
                               >
                                 {noteContent.note_text}
@@ -622,10 +796,18 @@ export default function NotesPage() {
                             {noteContent.metadata && (
                               <div className="mt-8 pt-4 border-t text-xs text-muted-foreground space-y-1">
                                 {noteContent.metadata.note_style && (
-                                  <p>Style: <span className="capitalize">{noteContent.metadata.note_style}</span></p>
+                                  <p>
+                                    Style:{" "}
+                                    <span className="capitalize">
+                                      {noteContent.metadata.note_style}
+                                    </span>
+                                  </p>
                                 )}
                                 {noteContent.metadata.total_chunks && (
-                                  <p>Processed {noteContent.metadata.total_chunks} chunks</p>
+                                  <p>
+                                    Processed{" "}
+                                    {noteContent.metadata.total_chunks} chunks
+                                  </p>
                                 )}
                                 <p>Generated with AI</p>
                               </div>
@@ -636,7 +818,9 @@ export default function NotesPage() {
                             <AlertCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
                             <p>No notes available</p>
                             {noteContent && (
-                              <p className="text-xs mt-2">Note content exists but note_text is empty</p>
+                              <p className="text-xs mt-2">
+                                Note content exists but note_text is empty
+                              </p>
                             )}
                           </div>
                         )}
@@ -701,10 +885,14 @@ export default function NotesPage() {
                         Processing Your Document
                       </h3>
                       <p className="text-sm text-muted-foreground mb-4">
-                        {selectedFile.status === "uploaded" && "Preparing to process..."}
-                        {selectedFile.status === "processing" && "Extracting text and chunking..."}
-                        {selectedFile.status === "indexed" && "Creating embeddings..."}
-                        {selectedFile.status === "summarizing" && "Generating notes with AI..."}
+                        {selectedFile.status === "uploaded" &&
+                          "Preparing to process..."}
+                        {selectedFile.status === "processing" &&
+                          "Extracting text and chunking..."}
+                        {selectedFile.status === "indexed" &&
+                          "Creating embeddings..."}
+                        {selectedFile.status === "summarizing" &&
+                          "Generating notes with AI..."}
                         {selectedFile.status === "failed" && (
                           <span className="text-destructive">
                             {selectedFile.error || "Processing failed"}
@@ -712,7 +900,8 @@ export default function NotesPage() {
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        This usually takes 1-3 minutes. The page will update automatically.
+                        This usually takes 1-3 minutes. The page will update
+                        automatically.
                       </p>
                     </div>
                   )}
