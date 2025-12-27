@@ -100,7 +100,82 @@ export interface UserStats {
   };
 }
 
-// Notes API types
+// Notes API types (unified with documents)
+export interface Note {
+  id: string;
+  user_id: string;
+  document_ids: string[];
+  title?: string;
+  note_text?: string;
+  note_style: NoteStyle;
+  metadata?: {
+    total_chunks?: number;
+    total_documents?: number;
+    synthesis_method?: string;
+    note_style?: string;
+    llm_provider?: string;
+    llm_model?: string;
+    tokens_used?: number;
+    [key: string]: unknown;
+  };
+  status:
+    | "generating"
+    | "retrieving"
+    | "summarizing"
+    | "synthesizing"
+    | "completed"
+    | "failed";
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NoteListItem {
+  id: string;
+  document_ids: string[];
+  title?: string;
+  status: string;
+  note_style: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NoteGenerateRequest {
+  document_ids: string[];
+  note_style?: NoteStyle;
+  user_prompt?: string;
+  title?: string;
+}
+
+export interface NoteGenerateResponse {
+  id: string;
+  user_id: string;
+  document_ids: string[];
+  title?: string;
+  status: string;
+  task_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NoteAnswer {
+  answer: string;
+  sources: Array<{
+    chunk_index: number;
+    document_id?: string;
+    relevance_score: number;
+    preview: string;
+  }>;
+  model_info: {
+    provider: string;
+    model: string;
+    tokens_used: number;
+  };
+}
+
+export type NoteStyle = "short" | "moderate" | "descriptive";
+
+// Legacy types for backward compatibility (deprecated)
 export interface NoteFile {
   id: string;
   filename: string;
@@ -140,24 +215,11 @@ export interface NoteContent {
     [key: string]: unknown;
   };
   created_at: string;
-  // Optional fields
   original_filename?: string;
   llm_provider?: string;
   llm_model?: string;
   updated_at?: string;
 }
-
-export interface NoteAnswer {
-  answer: string;
-  source_chunks: Array<{
-    chunk_text: string;
-    chunk_index: number;
-    page_start?: number;
-    page_end?: number;
-  }>;
-}
-
-export type NoteStyle = "short" | "moderate" | "descriptive";
 
 // Quiz API types
 export interface QuizQuestion {
@@ -633,10 +695,119 @@ export const statsAPI = {
   },
 };
 
-// Notes API
+// Notes API (unified with documents)
 export const notesAPI = {
   /**
-   * Upload a PDF file for note generation
+   * Generate notes from documents
+   * This is the new unified approach - documents are uploaded via documentsAPI.uploadDocuments()
+   */
+  async generateNotes(
+    request: NoteGenerateRequest,
+  ): Promise<NoteGenerateResponse> {
+    const response = await fetch(`${API_BASE_URL}/notes/generate`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse<NoteGenerateResponse>(response);
+  },
+
+  /**
+   * List all notes for the current user
+   */
+  async listNotes(
+    limit: number = 50,
+    offset: number = 0,
+  ): Promise<NoteListItem[]> {
+    const response = await fetch(
+      `${API_BASE_URL}/notes?limit=${limit}&offset=${offset}`,
+      {
+        headers: getAuthHeaders(),
+      },
+    );
+    return handleResponse<NoteListItem[]>(response);
+  },
+
+  /**
+   * Get a specific note by ID
+   */
+  async getNote(noteId: string): Promise<Note> {
+    const response = await fetch(`${API_BASE_URL}/notes/${noteId}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<Note>(response);
+  },
+
+  /**
+   * Delete a note
+   */
+  async deleteNote(
+    noteId: string,
+  ): Promise<{ message: string; note_id: string }> {
+    const response = await fetch(`${API_BASE_URL}/notes/${noteId}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Download notes as markdown file
+   */
+  async downloadNotesMarkdown(noteId: string): Promise<Blob> {
+    const response = await fetch(
+      `${API_BASE_URL}/notes/${noteId}/download/markdown`,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to download notes: ${response.statusText}`);
+    }
+    return response.blob();
+  },
+
+  /**
+   * Download notes as PDF
+   */
+  async downloadNotesPDF(noteId: string): Promise<Blob> {
+    const response = await fetch(
+      `${API_BASE_URL}/notes/${noteId}/download/pdf`,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to download PDF: ${response.statusText}`);
+    }
+    return response.blob();
+  },
+
+  /**
+   * Ask a question about the source documents of a note
+   */
+  async askQuestion(
+    noteId: string,
+    question: string,
+    nResults: number = 5,
+  ): Promise<NoteAnswer> {
+    const response = await fetch(`${API_BASE_URL}/notes/${noteId}/ask`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ question, n_results: nResults }),
+    });
+    return handleResponse<NoteAnswer>(response);
+  },
+
+  // ====== Legacy methods (deprecated) ======
+  // These are kept for backward compatibility but will return errors from the backend
+
+  /**
+   * @deprecated Use documentsAPI.uploadDocuments() then notesAPI.generateNotes()
    */
   async uploadPDF(
     file: File,
@@ -655,7 +826,6 @@ export const notesAPI = {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        // Don't set Content-Type for FormData - browser will set it with boundary
       },
       body: formData,
     });
@@ -663,7 +833,7 @@ export const notesAPI = {
   },
 
   /**
-   * Get status of a file
+   * @deprecated Use notesAPI.getNote() instead
    */
   async getFileStatus(fileId: string): Promise<NoteFile> {
     const response = await fetch(`${API_BASE_URL}/notes/status/${fileId}`, {
@@ -673,7 +843,7 @@ export const notesAPI = {
   },
 
   /**
-   * List all files with pagination
+   * @deprecated Use notesAPI.listNotes() instead
    */
   async listFiles(
     limit: number = 10,
@@ -689,7 +859,7 @@ export const notesAPI = {
   },
 
   /**
-   * Get generated notes for a file
+   * @deprecated Use notesAPI.getNote() instead
    */
   async getNotes(fileId: string): Promise<NoteContent> {
     const response = await fetch(`${API_BASE_URL}/notes/${fileId}`, {
@@ -699,55 +869,7 @@ export const notesAPI = {
   },
 
   /**
-   * Download notes as markdown file
-   */
-  async downloadNotesMarkdown(fileId: string): Promise<Blob> {
-    const response = await fetch(
-      `${API_BASE_URL}/notes/${fileId}/download/markdown`,
-      {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`Failed to download notes: ${response.statusText}`);
-    }
-    return response.blob();
-  },
-
-  /**
-   * Download notes as PDF
-   */
-  async downloadNotesPDF(fileId: string): Promise<Blob> {
-    const response = await fetch(
-      `${API_BASE_URL}/notes/${fileId}/download/pdf`,
-      {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`Failed to download PDF: ${response.statusText}`);
-    }
-    return response.blob();
-  },
-
-  /**
-   * Ask a question about a specific file
-   */
-  async askQuestion(fileId: string, question: string): Promise<NoteAnswer> {
-    const response = await fetch(`${API_BASE_URL}/notes/${fileId}/ask`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ question }),
-    });
-    return handleResponse(response);
-  },
-
-  /**
-   * Delete a file and all associated data
+   * @deprecated Use notesAPI.deleteNote() instead
    */
   async deleteFile(fileId: string): Promise<{ message: string }> {
     const response = await fetch(`${API_BASE_URL}/notes/files/${fileId}`, {

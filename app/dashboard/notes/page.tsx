@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,16 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { notesAPI, NoteFile, NoteContent, NoteStyle } from "@/lib/api";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Upload,
+  notesAPI,
+  documentsAPI,
+  Note,
+  NoteListItem,
+  NoteStyle,
+  Document,
+} from "@/lib/api";
+import {
   FileText,
   Download,
   Trash2,
@@ -24,6 +31,9 @@ import {
   ChevronLeft,
   RefreshCw,
   FileDown,
+  Plus,
+  Check,
+  Upload,
   X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -34,53 +44,66 @@ import "katex/dist/katex.min.css";
 
 export default function NotesPage() {
   const router = useRouter();
-  const [files, setFiles] = useState<NoteFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<NoteFile | null>(null);
-  const [noteContent, setNoteContent] = useState<NoteContent | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Notes state
+  const [notes, setNotes] = useState<NoteListItem[]>([]);
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Documents state (for generating notes)
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [allDocuments, setAllDocuments] = useState<Document[]>([]); // includes processing ones
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+
+  // Upload state
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Generate form state
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [noteStyle, setNoteStyle] = useState<NoteStyle>("moderate");
+  const [userPrompt, setUserPrompt] = useState("");
+  const [noteTitle, setNoteTitle] = useState("");
+  const [showGenerateForm, setShowGenerateForm] = useState(true);
+
+  // Q&A state
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
   const [isAsking, setIsAsking] = useState(false);
 
-  // Upload form state
-  const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
-  const [noteStyle, setNoteStyle] = useState<NoteStyle>("moderate");
-  const [userPrompt, setUserPrompt] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const loadFiles = async () => {
+  const loadNotes = useCallback(async () => {
     try {
-      const response = await notesAPI.listFiles(50, 0);
-      setFiles(response.files);
+      const notesList = await notesAPI.listNotes(50, 0);
+      setNotes(notesList);
     } catch (err: unknown) {
-      console.error("Failed to load files:", err);
-      setError(err instanceof Error ? err.message : "Failed to load files");
+      console.error("Failed to load notes:", err);
+      setError(err instanceof Error ? err.message : "Failed to load notes");
     }
-  };
+  }, []);
 
-  const refreshSelectedFile = useCallback(async () => {
-    if (!selectedFile || !selectedFile.id) return;
+  const loadDocuments = useCallback(async () => {
+    try {
+      const docs = await documentsAPI.getDocuments();
+      setAllDocuments(docs);
+      // Only show completed documents for selection
+      setDocuments(docs.filter((d) => d.embedding_status === "completed"));
+    } catch (err: unknown) {
+      console.error("Failed to load documents:", err);
+    }
+  }, []);
+
+  const refreshSelectedNote = useCallback(async () => {
+    if (!selectedNote || !selectedNote.id) return;
 
     try {
-      const updatedFile = await notesAPI.getFileStatus(selectedFile.id);
-      setSelectedFile(updatedFile);
-
-      // If file just completed, load the notes
-      if (
-        updatedFile.status === "completed" &&
-        selectedFile.status !== "completed"
-      ) {
-        console.log("File just completed! Loading notes...");
-        const content = await notesAPI.getNotes(updatedFile.id);
-        console.log("Auto-loaded notes:", content);
-        setNoteContent(content);
-      }
+      const updatedNote = await notesAPI.getNote(selectedNote.id);
+      setSelectedNote(updatedNote);
     } catch (err: unknown) {
-      console.error("Failed to refresh file status:", err);
+      console.error("Failed to refresh note:", err);
     }
-  }, [selectedFile]);
+  }, [selectedNote]);
 
   // Check authentication
   useEffect(() => {
@@ -88,122 +111,172 @@ export default function NotesPage() {
     if (!token) {
       router.push("/login");
     } else {
-      loadFiles();
+      loadNotes();
+      loadDocuments();
     }
-  }, [router]);
+  }, [router, loadNotes, loadDocuments]);
 
-  // Poll for status updates every 5 seconds when there are processing files
+  // Poll for status updates when there are generating notes
   useEffect(() => {
-    const hasProcessing = files.some(
-      (f) =>
-        f.status === "processing" ||
-        f.status === "indexed" ||
-        f.status === "summarizing" ||
-        f.status === "uploaded",
+    const hasGenerating = notes.some(
+      (n) =>
+        n.status === "generating" ||
+        n.status === "retrieving" ||
+        n.status === "summarizing" ||
+        n.status === "synthesizing",
     );
-    if (!hasProcessing) return;
+    if (!hasGenerating) return;
 
     const interval = setInterval(() => {
-      loadFiles();
-      // Reload notes if selected file is processing
-      if (selectedFile && selectedFile.status !== "completed") {
-        refreshSelectedFile();
+      loadNotes();
+      if (selectedNote && selectedNote.status !== "completed") {
+        refreshSelectedNote();
       }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [files, selectedFile, refreshSelectedFile]);
+  }, [notes, selectedNote, loadNotes, refreshSelectedNote]);
 
+  // Poll for document processing status
+  useEffect(() => {
+    const hasProcessing = allDocuments.some(
+      (d) =>
+        d.embedding_status === "processing" || d.embedding_status === "pending",
+    );
+    if (!hasProcessing) return;
+
+    const interval = setInterval(() => {
+      loadDocuments();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [allDocuments, loadDocuments]);
+
+  // File upload handlers
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = event.target.files;
+    if (!files) return;
 
-    // Validate file type
-    if (file.type !== "application/pdf") {
-      setError("Only PDF files are supported");
-      return;
+    const pdfFiles: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type === "application/pdf") {
+        if (file.size <= 50 * 1024 * 1024) {
+          pdfFiles.push(file);
+        } else {
+          setError(`File "${file.name}" exceeds 50MB limit`);
+        }
+      } else {
+        setError(`File "${file.name}" is not a PDF`);
+      }
     }
 
-    // Validate file size (50MB max)
-    if (file.size > 50 * 1024 * 1024) {
-      setError("File size must be less than 50MB");
-      return;
+    if (pdfFiles.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...pdfFiles]);
+      setError(null);
     }
-
-    setSelectedPdfFile(file);
-    setError(null);
   };
 
-  const handleSubmit = async () => {
-    if (!selectedPdfFile) {
-      setError("Please select a PDF file first");
-      return;
-    }
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUploadFiles = async () => {
+    if (selectedFiles.length === 0) return;
 
     setIsUploading(true);
     setError(null);
 
     try {
-      const response = await notesAPI.uploadPDF(
-        selectedPdfFile,
-        noteStyle,
-        userPrompt || undefined,
-      );
+      const responses = await documentsAPI.uploadDocuments(selectedFiles);
 
-      // Clear form
-      setSelectedPdfFile(null);
-      setUserPrompt("");
+      // Clear selected files
+      setSelectedFiles([]);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
 
-      // Reload files and select the newly uploaded one
-      await loadFiles();
+      // Reload documents to show the new ones (they'll be processing)
+      await loadDocuments();
 
-      // Find and select the new file
-      const newFiles = await notesAPI.listFiles(50, 0);
-      const newFile = newFiles.files.find((f) => f.id === response.file_id);
-      if (newFile) {
-        handleSelectFile(newFile);
-      }
+      // Show success message
+      setError(null);
+      console.log(
+        `Uploaded ${responses.length} file(s). They will be available for note generation once processed.`,
+      );
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to upload file");
+      setError(err instanceof Error ? err.message : "Failed to upload files");
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleSelectFile = async (file: NoteFile) => {
-    setSelectedFile(file);
-    setNoteContent(null);
+  const handleDocumentToggle = (docId: string) => {
+    setSelectedDocIds((prev) =>
+      prev.includes(docId)
+        ? prev.filter((id) => id !== docId)
+        : [...prev, docId],
+    );
+  };
+
+  const handleGenerateNotes = async () => {
+    if (selectedDocIds.length === 0) {
+      setError("Please select at least one document");
+      return;
+    }
+
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      const response = await notesAPI.generateNotes({
+        document_ids: selectedDocIds,
+        note_style: noteStyle,
+        user_prompt: userPrompt || undefined,
+        title: noteTitle || undefined,
+      });
+
+      // Clear form
+      setSelectedDocIds([]);
+      setUserPrompt("");
+      setNoteTitle("");
+      setShowGenerateForm(false);
+
+      // Reload notes and select the new one
+      await loadNotes();
+      const newNote = await notesAPI.getNote(response.id);
+      setSelectedNote(newNote);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate notes");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSelectNote = async (note: NoteListItem) => {
+    setIsLoading(true);
     setAnswer(null);
     setQuestion("");
 
-    if (file.status === "completed") {
-      setIsLoading(true);
-      try {
-        console.log("Fetching notes for file:", file.id);
-        const content = await notesAPI.getNotes(file.id);
-        console.log("Received notes content:", content);
-        console.log("Note text length:", content.note_text?.length || 0);
-        setNoteContent(content);
-      } catch (err: unknown) {
-        console.error("Failed to load notes:", err);
-        setError(err instanceof Error ? err.message : "Failed to load notes");
-      } finally {
-        setIsLoading(false);
-      }
+    try {
+      const fullNote = await notesAPI.getNote(note.id);
+      setSelectedNote(fullNote);
+    } catch (err: unknown) {
+      console.error("Failed to load note:", err);
+      setError(err instanceof Error ? err.message : "Failed to load note");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleAskQuestion = async () => {
-    if (!selectedFile || !question.trim()) return;
+    if (!selectedNote || !question.trim()) return;
 
     setIsAsking(true);
     setError(null);
 
     try {
-      const response = await notesAPI.askQuestion(selectedFile.id, question);
+      const response = await notesAPI.askQuestion(selectedNote.id, question);
       setAnswer(response.answer);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to get answer");
@@ -212,13 +285,13 @@ export default function NotesPage() {
     }
   };
 
-  const handleDownloadMarkdown = async (fileId: string, filename: string) => {
+  const handleDownloadMarkdown = async (noteId: string, title: string) => {
     try {
-      const blob = await notesAPI.downloadNotesMarkdown(fileId);
+      const blob = await notesAPI.downloadNotesMarkdown(noteId);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${filename}_notes.md`;
+      a.download = `${title || "notes"}.md`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -228,13 +301,13 @@ export default function NotesPage() {
     }
   };
 
-  const handleDownloadPDF = async (fileId: string, filename: string) => {
+  const handleDownloadPDF = async (noteId: string, title: string) => {
     try {
-      const blob = await notesAPI.downloadNotesPDF(fileId);
+      const blob = await notesAPI.downloadNotesPDF(noteId);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${filename}_notes.pdf`;
+      a.download = `${title || "notes"}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -244,18 +317,17 @@ export default function NotesPage() {
     }
   };
 
-  const handleDeleteFile = async (fileId: string) => {
-    if (!confirm("Are you sure you want to delete this file?")) return;
+  const handleDeleteNote = async (noteId: string) => {
+    if (!confirm("Are you sure you want to delete this note?")) return;
 
     try {
-      await notesAPI.deleteFile(fileId);
-      if (selectedFile?.id === fileId) {
-        setSelectedFile(null);
-        setNoteContent(null);
+      await notesAPI.deleteNote(noteId);
+      if (selectedNote?.id === noteId) {
+        setSelectedNote(null);
       }
-      await loadFiles();
+      await loadNotes();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to delete file");
+      setError(err instanceof Error ? err.message : "Failed to delete note");
     }
   };
 
@@ -263,10 +335,10 @@ export default function NotesPage() {
     switch (status) {
       case "completed":
         return "bg-muted text-foreground border-border";
-      case "processing":
-      case "indexed":
+      case "generating":
+      case "retrieving":
       case "summarizing":
-      case "uploaded":
+      case "synthesizing":
         return "bg-primary/10 text-primary border-primary/20";
       case "failed":
         return "bg-destructive/10 text-destructive border-destructive/20";
@@ -277,12 +349,15 @@ export default function NotesPage() {
 
   const getStatusIcon = (status: string) => {
     if (
-      status === "processing" ||
-      status === "indexed" ||
+      status === "generating" ||
+      status === "retrieving" ||
       status === "summarizing" ||
-      status === "uploaded"
+      status === "synthesizing"
     ) {
       return <Loader2 className="h-3 w-3 animate-spin" />;
+    }
+    if (status === "completed") {
+      return <Check className="h-3 w-3" />;
     }
     return null;
   };
@@ -307,14 +382,17 @@ export default function NotesPage() {
               <div>
                 <h1 className="text-2xl font-bold">AI Notes Generator</h1>
                 <p className="text-sm text-muted-foreground">
-                  Upload PDFs and generate intelligent study notes
+                  Generate intelligent study notes from your documents
                 </p>
               </div>
             </div>
             <Button
               variant="outline"
               size="sm"
-              onClick={loadFiles}
+              onClick={() => {
+                loadNotes();
+                loadDocuments();
+              }}
               disabled={isLoading}
             >
               <RefreshCw
@@ -328,161 +406,274 @@ export default function NotesPage() {
 
       <div className="container mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Sidebar - Upload & File List */}
+          {/* Left Sidebar - Generate & Notes List */}
           <div className="lg:col-span-4 space-y-4">
-            {/* Upload Section */}
+            {/* Generate Notes Section */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Upload className="h-5 w-5" />
-                  Upload PDF
+                <CardTitle className="text-lg flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Plus className="h-5 w-5" />
+                    Generate Notes
+                  </span>
+                  {showGenerateForm && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowGenerateForm(false)}
+                    >
+                      Hide
+                    </Button>
+                  )}
                 </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* File Selection */}
-                <div className="space-y-2">
-                  <Label>Select PDF File</Label>
-                  <div className="flex gap-2">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      id="file-upload"
-                    />
+                {!showGenerateForm && (
+                  <CardContent className="pt-0">
                     <Button
                       variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploading}
-                      className="flex-1"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setShowGenerateForm(true)}
                     >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Choose File
+                      <Plus className="h-4 w-4 mr-2" />
+                      New Notes
                     </Button>
-                  </div>
-                  {selectedPdfFile && (
-                    <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm flex-1 truncate">
-                        {selectedPdfFile.name}
-                      </span>
+                  </CardContent>
+                )}
+              </CardHeader>
+              {showGenerateForm && (
+                <CardContent className="space-y-4">
+                  {/* Upload New Files Section */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      Upload New PDFs
+                    </Label>
+                    <div className="flex gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf"
+                        multiple
+                        onChange={handleFileSelect}
+                        className="hidden"
+                        id="file-upload"
+                      />
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        onClick={() => {
-                          setSelectedPdfFile(null);
-                          if (fileInputRef.current) {
-                            fileInputRef.current.value = "";
-                          }
-                        }}
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="flex-1"
                       >
-                        <X className="h-4 w-4" />
+                        <Upload className="h-4 w-4 mr-2" />
+                        Choose Files
                       </Button>
+                      {selectedFiles.length > 0 && (
+                        <Button
+                          size="sm"
+                          onClick={handleUploadFiles}
+                          disabled={isUploading}
+                        >
+                          {isUploading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>Upload ({selectedFiles.length})</>
+                          )}
+                        </Button>
+                      )}
                     </div>
-                  )}
-                </div>
+                    {selectedFiles.length > 0 && (
+                      <div className="space-y-1 max-h-24 overflow-y-auto">
+                        {selectedFiles.map((file, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center gap-2 p-1.5 bg-muted rounded text-xs"
+                          >
+                            <FileText className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                            <span className="truncate flex-1">{file.name}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 p-0"
+                              onClick={() => handleRemoveFile(index)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Show processing documents */}
+                    {allDocuments.some(
+                      (d) => d.embedding_status === "processing",
+                    ) && (
+                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Processing documents...
+                      </div>
+                    )}
+                  </div>
 
-                {/* Note Style */}
-                <div className="space-y-2">
-                  <Label>Note Style</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["short", "moderate", "descriptive"] as NoteStyle[]).map(
-                      (style) => (
+                  <Separator />
+
+                  {/* Document Selection */}
+                  <div className="space-y-2">
+                    <Label>Select Documents for Notes</Label>
+                    {documents.length === 0 ? (
+                      <div className="text-center py-4 text-muted-foreground">
+                        <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">No processed documents</p>
+                        <p className="text-xs">
+                          Upload PDFs above to get started
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="max-h-40 overflow-y-auto space-y-2 border rounded-md p-2">
+                        {documents.map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="flex items-center space-x-2"
+                          >
+                            <Checkbox
+                              id={doc.id}
+                              checked={selectedDocIds.includes(doc.id)}
+                              onCheckedChange={() =>
+                                handleDocumentToggle(doc.id)
+                              }
+                            />
+                            <label
+                              htmlFor={doc.id}
+                              className="text-sm truncate flex-1 cursor-pointer"
+                            >
+                              {doc.original_filename}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {selectedDocIds.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {selectedDocIds.length} document(s) selected
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Note Title */}
+                  <div className="space-y-2">
+                    <Label htmlFor="note-title">Title (Optional)</Label>
+                    <Input
+                      id="note-title"
+                      placeholder="E.g., Chapter 5 Notes"
+                      value={noteTitle}
+                      onChange={(e) => setNoteTitle(e.target.value)}
+                      disabled={isGenerating}
+                    />
+                  </div>
+
+                  {/* Note Style */}
+                  <div className="space-y-2">
+                    <Label>Note Style</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(
+                        ["short", "moderate", "descriptive"] as NoteStyle[]
+                      ).map((style) => (
                         <Button
                           key={style}
                           variant={noteStyle === style ? "default" : "outline"}
                           size="sm"
                           onClick={() => setNoteStyle(style)}
                           className="capitalize"
-                          disabled={isUploading}
+                          disabled={isGenerating}
                         >
                           {style}
                         </Button>
-                      ),
-                    )}
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {noteStyle === "short" &&
+                        "Brief bullet points, only key facts"}
+                      {noteStyle === "moderate" &&
+                        "Balanced notes with main points and details"}
+                      {noteStyle === "descriptive" &&
+                        "Comprehensive notes with full explanations"}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {noteStyle === "short" &&
-                      "Brief bullet points, only key facts"}
-                    {noteStyle === "moderate" &&
-                      "Balanced notes with main points and details"}
-                    {noteStyle === "descriptive" &&
-                      "Comprehensive notes with full explanations"}
-                  </p>
-                </div>
 
-                {/* Custom Instructions */}
-                <div className="space-y-2">
-                  <Label htmlFor="user-prompt">
-                    Custom Instructions (Optional)
-                  </Label>
-                  <Input
-                    id="user-prompt"
-                    placeholder="E.g., Focus on methodology..."
-                    value={userPrompt}
-                    onChange={(e) => setUserPrompt(e.target.value)}
-                    disabled={isUploading}
-                  />
-                </div>
+                  {/* Custom Instructions */}
+                  <div className="space-y-2">
+                    <Label htmlFor="user-prompt">
+                      Custom Instructions (Optional)
+                    </Label>
+                    <Input
+                      id="user-prompt"
+                      placeholder="E.g., Focus on methodology..."
+                      value={userPrompt}
+                      onChange={(e) => setUserPrompt(e.target.value)}
+                      disabled={isGenerating}
+                    />
+                  </div>
 
-                {/* Submit Button */}
-                <Button
-                  onClick={handleSubmit}
-                  disabled={isUploading || !selectedPdfFile}
-                  className="w-full"
-                  size="lg"
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Uploading & Processing...
-                    </>
-                  ) : (
-                    <>
-                      <StickyNote className="h-4 w-4 mr-2" />
-                      Generate Notes
-                    </>
-                  )}
-                </Button>
-              </CardContent>
+                  {/* Submit Button */}
+                  <Button
+                    onClick={handleGenerateNotes}
+                    disabled={isGenerating || selectedDocIds.length === 0}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <StickyNote className="h-4 w-4 mr-2" />
+                        Generate Notes
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              )}
             </Card>
 
-            {/* Files List */}
+            {/* Notes List */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center justify-between">
                   <span className="flex items-center gap-2">
                     <FileText className="h-5 w-5" />
-                    Your Files ({files.length})
+                    Your Notes ({notes.length})
                   </span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                  {files.length === 0 ? (
+                <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                  {notes.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">No files uploaded yet</p>
+                      <StickyNote className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No notes generated yet</p>
+                      <p className="text-xs mt-1">
+                        Select documents and generate notes
+                      </p>
                     </div>
                   ) : (
-                    files.map((file) => (
+                    notes.map((note) => (
                       <div
-                        key={file.id}
+                        key={note.id}
                         className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                          selectedFile?.id === file.id
+                          selectedNote?.id === note.id
                             ? "border-primary bg-primary/5"
                             : "hover:border-muted-foreground hover:bg-muted/50"
                         }`}
-                        onClick={() => handleSelectFile(file)}
+                        onClick={() => handleSelectNote(note)}
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">
-                              {file.original_filename}
+                              {note.title || `Note ${note.id.slice(0, 8)}`}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {new Date(file.created_at).toLocaleDateString()}
+                              {new Date(note.created_at).toLocaleDateString()}
                             </p>
                           </div>
                           <Button
@@ -490,10 +681,9 @@ export default function NotesPage() {
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDeleteFile(file.id);
+                              handleDeleteNote(note.id);
                             }}
                             className="text-muted-foreground hover:text-destructive ml-2"
-                            aria-label={`Delete ${file.original_filename}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -501,20 +691,20 @@ export default function NotesPage() {
                         <div className="flex items-center gap-2">
                           <Badge
                             variant="outline"
-                            className={`text-xs ${getStatusColor(file.status)}`}
+                            className={`text-xs ${getStatusColor(note.status)}`}
                           >
                             <span className="flex items-center gap-1">
-                              {getStatusIcon(file.status)}
-                              {file.status}
+                              {getStatusIcon(note.status)}
+                              {note.status}
                             </span>
                           </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {(file.file_size / 1024 / 1024).toFixed(2)} MB
+                          <span className="text-xs text-muted-foreground capitalize">
+                            {note.note_style}
                           </span>
                         </div>
-                        {file.error && (
-                          <p className="text-xs text-destructive mt-1">
-                            {file.error}
+                        {note.document_ids && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {note.document_ids.length} document(s)
                           </p>
                         )}
                       </div>
@@ -534,15 +724,16 @@ export default function NotesPage() {
               </Alert>
             )}
 
-            {!selectedFile ? (
+            {!selectedNote ? (
               <Card className="h-[600px] flex items-center justify-center">
                 <CardContent className="text-center">
                   <StickyNote className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
                   <h3 className="text-lg font-semibold mb-2">
-                    No File Selected
+                    No Note Selected
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    Upload a PDF or select a file to view notes
+                    Generate notes from your documents or select an existing
+                    note
                   </p>
                 </CardContent>
               </Card>
@@ -552,50 +743,55 @@ export default function NotesPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <CardTitle className="flex items-center gap-2">
-                        <FileText className="h-5 w-5" />
-                        {selectedFile.original_filename}
+                        <StickyNote className="h-5 w-5" />
+                        {selectedNote.title ||
+                          `Note ${selectedNote.id.slice(0, 8)}`}
                       </CardTitle>
                       <p className="text-sm text-muted-foreground mt-1">
                         Status:{" "}
                         <span className="capitalize">
-                          {selectedFile.status}
+                          {selectedNote.status}
                         </span>
+                        {selectedNote.document_ids && (
+                          <> | {selectedNote.document_ids.length} document(s)</>
+                        )}
                       </p>
                     </div>
-                    {selectedFile.status === "completed" && noteContent && (
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            handleDownloadMarkdown(
-                              selectedFile.id,
-                              selectedFile.original_filename,
-                            )
-                          }
-                        >
-                          <FileDown className="h-4 w-4 mr-2" />
-                          Markdown
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            handleDownloadPDF(
-                              selectedFile.id,
-                              selectedFile.original_filename,
-                            )
-                          }
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          PDF
-                        </Button>
-                      </div>
-                    )}
+                    {selectedNote.status === "completed" &&
+                      selectedNote.note_text && (
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              handleDownloadMarkdown(
+                                selectedNote.id,
+                                selectedNote.title || "notes",
+                              )
+                            }
+                          >
+                            <FileDown className="h-4 w-4 mr-2" />
+                            Markdown
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              handleDownloadPDF(
+                                selectedNote.id,
+                                selectedNote.title || "notes",
+                              )
+                            }
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            PDF
+                          </Button>
+                        </div>
+                      )}
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {selectedFile.status === "completed" ? (
+                  {selectedNote.status === "completed" ? (
                     <Tabs defaultValue="notes" className="w-full">
                       <TabsList className="grid w-full grid-cols-2">
                         <TabsTrigger value="notes">
@@ -616,197 +812,33 @@ export default function NotesPage() {
                               Loading notes...
                             </p>
                           </div>
-                        ) : noteContent && noteContent.note_text ? (
+                        ) : selectedNote.note_text ? (
                           <div suppressHydrationWarning>
-                            <div className="markdown-content">
+                            <div className="markdown-content prose prose-sm max-w-none dark:prose-invert">
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm, remarkMath]}
                                 rehypePlugins={[rehypeKatex]}
-                                components={{
-                                  h1: ({ children, ...props }) => (
-                                    <h1
-                                      className="text-3xl font-bold mt-6 mb-4"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </h1>
-                                  ),
-                                  h2: ({ children, ...props }) => (
-                                    <h2
-                                      className="text-2xl font-bold mt-5 mb-3"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </h2>
-                                  ),
-                                  h3: ({ children, ...props }) => (
-                                    <h3
-                                      className="text-xl font-semibold mt-4 mb-2"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </h3>
-                                  ),
-                                  h4: ({ children, ...props }) => (
-                                    <h4
-                                      className="text-lg font-semibold mt-3 mb-2"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </h4>
-                                  ),
-                                  p: ({ children, ...props }) => (
-                                    <p
-                                      className="mb-4 leading-7 text-foreground"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </p>
-                                  ),
-                                  ul: ({ children, ...props }) => (
-                                    <ul
-                                      className="list-disc ml-6 mb-4 space-y-2"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </ul>
-                                  ),
-                                  ol: ({ children, ...props }) => (
-                                    <ol
-                                      className="list-decimal ml-6 mb-4 space-y-2"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </ol>
-                                  ),
-                                  li: ({ children, ...props }) => (
-                                    <li
-                                      className="leading-7 text-foreground"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </li>
-                                  ),
-                                  code: ({
-                                    children,
-                                    className,
-                                    ...props
-                                  }: React.ComponentPropsWithoutRef<"code">) => {
-                                    const isInline =
-                                      !className?.includes("language-");
-                                    return isInline ? (
-                                      <code
-                                        className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono text-foreground"
-                                        {...props}
-                                      >
-                                        {children}
-                                      </code>
-                                    ) : (
-                                      <code
-                                        className="block bg-muted p-4 rounded-lg text-sm font-mono overflow-x-auto mb-4 text-foreground"
-                                        {...props}
-                                      >
-                                        {children}
-                                      </code>
-                                    );
-                                  },
-                                  blockquote: ({ children, ...props }) => (
-                                    <blockquote
-                                      className="border-l-4 border-primary pl-4 italic my-4 text-muted-foreground"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </blockquote>
-                                  ),
-                                  a: ({ children, ...props }) => (
-                                    <a
-                                      className="text-primary hover:underline"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </a>
-                                  ),
-                                  strong: ({ children, ...props }) => (
-                                    <strong
-                                      className="font-bold text-foreground"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </strong>
-                                  ),
-                                  em: ({ children, ...props }) => (
-                                    <em
-                                      className="italic text-foreground"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </em>
-                                  ),
-                                  hr: ({ ...props }) => (
-                                    <hr
-                                      className="my-6 border-border"
-                                      {...props}
-                                    />
-                                  ),
-                                  table: ({ children, ...props }) => (
-                                    <table
-                                      className="w-full border-collapse mb-4 border border-border"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </table>
-                                  ),
-                                  thead: ({ children, ...props }) => (
-                                    <thead className="bg-muted" {...props}>
-                                      {children}
-                                    </thead>
-                                  ),
-                                  tbody: ({ children, ...props }) => (
-                                    <tbody {...props}>{children}</tbody>
-                                  ),
-                                  tr: ({ children, ...props }) => (
-                                    <tr
-                                      className="border-b border-border"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </tr>
-                                  ),
-                                  th: ({ children, ...props }) => (
-                                    <th
-                                      className="px-4 py-2 text-left font-semibold text-foreground"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </th>
-                                  ),
-                                  td: ({ children, ...props }) => (
-                                    <td
-                                      className="px-4 py-2 text-foreground"
-                                      {...props}
-                                    >
-                                      {children}
-                                    </td>
-                                  ),
-                                }}
                               >
-                                {noteContent.note_text}
+                                {selectedNote.note_text}
                               </ReactMarkdown>
                             </div>
-                            {noteContent.metadata && (
+                            {selectedNote.metadata && (
                               <div className="mt-8 pt-4 border-t text-xs text-muted-foreground space-y-1">
-                                {noteContent.metadata.note_style && (
+                                {selectedNote.metadata.note_style && (
                                   <p>
                                     Style:{" "}
                                     <span className="capitalize">
-                                      {noteContent.metadata.note_style}
+                                      {selectedNote.metadata.note_style}
                                     </span>
                                   </p>
                                 )}
-                                {noteContent.metadata.total_chunks && (
+                                {selectedNote.metadata.total_chunks && (
                                   <p>
                                     Processed{" "}
-                                    {noteContent.metadata.total_chunks} chunks
+                                    {selectedNote.metadata.total_chunks} chunks
+                                    from{" "}
+                                    {selectedNote.metadata.total_documents || 1}{" "}
+                                    document(s)
                                   </p>
                                 )}
                                 <p>Generated with AI</p>
@@ -816,12 +848,7 @@ export default function NotesPage() {
                         ) : (
                           <div className="text-center py-12 text-muted-foreground">
                             <AlertCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                            <p>No notes available</p>
-                            {noteContent && (
-                              <p className="text-xs mt-2">
-                                Note content exists but note_text is empty
-                              </p>
-                            )}
+                            <p>No notes content available</p>
                           </div>
                         )}
                       </TabsContent>
@@ -871,33 +898,39 @@ export default function NotesPage() {
                             <div className="text-center py-12 text-muted-foreground">
                               <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-50" />
                               <p className="text-sm">
-                                Ask questions about the document content
+                                Ask questions about the source documents
                               </p>
                             </div>
                           )}
                         </div>
                       </TabsContent>
                     </Tabs>
+                  ) : selectedNote.status === "failed" ? (
+                    <div className="text-center py-12">
+                      <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+                      <h3 className="text-lg font-semibold mb-2">
+                        Generation Failed
+                      </h3>
+                      <p className="text-sm text-destructive">
+                        {selectedNote.error ||
+                          "An error occurred during generation"}
+                      </p>
+                    </div>
                   ) : (
                     <div className="text-center py-12">
                       <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin text-primary" />
                       <h3 className="text-lg font-semibold mb-2">
-                        Processing Your Document
+                        Generating Your Notes
                       </h3>
                       <p className="text-sm text-muted-foreground mb-4">
-                        {selectedFile.status === "uploaded" &&
-                          "Preparing to process..."}
-                        {selectedFile.status === "processing" &&
-                          "Extracting text and chunking..."}
-                        {selectedFile.status === "indexed" &&
-                          "Creating embeddings..."}
-                        {selectedFile.status === "summarizing" &&
-                          "Generating notes with AI..."}
-                        {selectedFile.status === "failed" && (
-                          <span className="text-destructive">
-                            {selectedFile.error || "Processing failed"}
-                          </span>
-                        )}
+                        {selectedNote.status === "generating" &&
+                          "Starting note generation..."}
+                        {selectedNote.status === "retrieving" &&
+                          "Retrieving document chunks..."}
+                        {selectedNote.status === "summarizing" &&
+                          "Summarizing content with AI..."}
+                        {selectedNote.status === "synthesizing" &&
+                          "Synthesizing final notes..."}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         This usually takes 1-3 minutes. The page will update
