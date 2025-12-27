@@ -95,10 +95,11 @@ export default function PDFReaderPage() {
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const handleLogout = useCallback(() => {
+    // Clear both old and new token keys
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("token");
-    router.push("/login");
+    router.push("/auth/sign-in");
   }, [router]);
 
   const initializeData = useCallback(async () => {
@@ -127,9 +128,11 @@ export default function PDFReaderPage() {
   }, [handleLogout]);
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
+    // Check for access_token first (new system), then fall back to token (old system)
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
     if (!token) {
-      router.push("/login");
+      router.push("/auth/sign-in");
       return;
     }
 

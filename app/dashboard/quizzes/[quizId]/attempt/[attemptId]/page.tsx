@@ -50,9 +50,11 @@ export default function QuizAttemptPage() {
   const startTimeRef = useRef<number>(Date.now());
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    // Check for access_token first (new system), then fall back to token (old system)
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
     if (!token) {
-      router.push("/login");
+      router.push("/auth/sign-in");
     } else if (quizId && attemptId) {
       loadQuizAndAttempt();
     }

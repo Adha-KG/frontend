@@ -95,8 +95,26 @@ function SignInContent() {
       }
 
       // Redirect to dashboard or return URL
-      const returnUrl = searchParams.get("returnUrl") || "/dashboard";
-      router.push(returnUrl);
+      // searchParams.get() automatically decodes URL-encoded values
+      const returnUrlParam = searchParams.get("returnUrl");
+      let returnUrl = "/dashboard";
+
+      if (returnUrlParam) {
+        // Ensure it's properly decoded (searchParams.get should handle this, but be safe)
+        try {
+          returnUrl = decodeURIComponent(returnUrlParam);
+          // Validate that it's a valid path (starts with /)
+          if (!returnUrl.startsWith("/")) {
+            returnUrl = "/dashboard";
+          }
+        } catch {
+          // If decoding fails, use default
+          returnUrl = "/dashboard";
+        }
+      }
+
+      // Use replace to avoid adding sign-in page to browser history
+      router.replace(returnUrl);
     } catch (err: unknown) {
       const errorMessage =
         err instanceof Error ? err.message : "Sign in failed";
