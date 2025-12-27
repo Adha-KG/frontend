@@ -27,6 +27,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { documentsAPI, chatAPI, queryAPI, authAPI } from "@/lib/api";
 import type { Document, ChatSession, QueryResponse } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100MB total
@@ -175,13 +176,20 @@ export default function PDFChatterPage() {
     }
   };
 
-  const handleLogout = () => {
-    // Clear both old and new token keys
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
-    localStorage.removeItem("tokenType");
+  const handleLogout = async () => {
+    const { clearAuth } = useAuthStore.getState();
+
+    // Clear Supabase session if it exists
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.warn("Failed to sign out from Supabase:", error);
+    }
+
+    // Clear local auth state
+    clearAuth();
     router.push("/auth/sign-in");
   };
 

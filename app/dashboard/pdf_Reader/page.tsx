@@ -21,6 +21,7 @@ import {
 import { Document, Page, pdfjs } from "react-pdf";
 import { documentsAPI, authAPI } from "@/lib/api";
 import type { Document as DocumentType } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 
 // Set up PDF.js worker
 if (typeof window !== "undefined") {
@@ -94,11 +95,20 @@ export default function PDFReaderPage() {
   const [error, setError] = useState("");
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const handleLogout = useCallback(() => {
-    // Clear both old and new token keys
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("token");
+  const handleLogout = useCallback(async () => {
+    const { clearAuth } = useAuthStore.getState();
+
+    // Clear Supabase session if it exists
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.warn("Failed to sign out from Supabase:", error);
+    }
+
+    // Clear local auth state
+    clearAuth();
     router.push("/auth/sign-in");
   }, [router]);
 

@@ -71,6 +71,8 @@ export const useAuthStore = create<AuthState>()(
           localStorage.removeItem("tokenType");
           localStorage.removeItem("username");
           localStorage.removeItem("userId");
+          // Clear Zustand persisted storage
+          localStorage.removeItem("auth-storage");
         }
         set({
           user: null,

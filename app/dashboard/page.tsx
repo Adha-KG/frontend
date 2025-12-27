@@ -15,6 +15,7 @@ import {
   type UserStats,
   type User,
 } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 
 import {
   BookOpen,
@@ -128,14 +129,20 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  const handleLogout = () => {
-    // Clear both old and new token keys
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
-    localStorage.removeItem("tokenType");
-    localStorage.removeItem("userId");
+  const handleLogout = async () => {
+    const { clearAuth } = useAuthStore.getState();
+
+    // Clear Supabase session if it exists
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.warn("Failed to sign out from Supabase:", error);
+    }
+
+    // Clear local auth state
+    clearAuth();
     router.push("/auth/sign-in");
   };
 
