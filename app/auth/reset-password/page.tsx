@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, AlertCircle, Lock } from "lucide-react";
 import { authAPI } from "@/lib/api";
+import { createClient } from "@/lib/supabase/client";
 
 interface PasswordStrength {
   score: number; // 0-4
@@ -55,33 +56,35 @@ function ResetPasswordContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [isValidToken, setIsValidToken] = useState<boolean | null>(null);
+  const [isSupabaseFlow, setIsSupabaseFlow] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const passwordStrength = calculatePasswordStrength(password);
 
-  // Extract token from URL query params
+  // Extract token from URL query params or hash fragment
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Try to get token from query params
-    const tokenFromQuery =
-      searchParams.get("token") || searchParams.get("access_token");
+    // Check query parameters first (?access_token=...)
+    let token = searchParams.get("access_token") || searchParams.get("token");
+    let isSupabase = false;
 
-    // Also check hash fragment (some email clients put it there)
-    if (!tokenFromQuery && window.location.hash) {
+    // Check hash fragment if not found in query (#access_token=...)
+    // This handles Supabase redirects which put the token in the hash
+    if (!token && window.location.hash) {
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const tokenFromHash =
-        hashParams.get("token") || hashParams.get("access_token");
-      if (tokenFromHash) {
-        setToken(tokenFromHash);
-        setIsValidToken(true);
-        return;
+      token = hashParams.get("access_token") || hashParams.get("token");
+      // Check if it's a Supabase recovery flow (type=recovery in hash)
+      const type = hashParams.get("type");
+      if (type === "recovery") {
+        isSupabase = true;
       }
     }
 
-    if (tokenFromQuery) {
-      setToken(tokenFromQuery);
+    if (token) {
+      setToken(token);
+      setIsSupabaseFlow(isSupabase);
       setIsValidToken(true);
     } else {
       setIsValidToken(false);
@@ -128,10 +131,24 @@ function ResetPasswordContent() {
     setIsLoading(true);
 
     try {
-      await authAPI.resetPassword(token, password);
+      // Handle Supabase flow: use Supabase's updateUser method
+      if (isSupabaseFlow) {
+        const supabase = createClient();
+        const { error: supabaseError } = await supabase.auth.updateUser({
+          password: password,
+        });
 
-      // Redirect to sign in with success message
-      router.push("/auth/sign-in?message=password_reset_success");
+        if (supabaseError) throw supabaseError;
+
+        // Redirect to sign in with success message
+        router.push("/auth/sign-in?message=password_reset_success");
+      } else {
+        // Handle custom backend flow: use custom API
+        await authAPI.resetPassword(token, password);
+
+        // Redirect to sign in with success message
+        router.push("/auth/sign-in?message=password_reset_success");
+      }
     } catch (err: unknown) {
       const errorMessage =
         err instanceof Error ? err.message : "Password reset failed";
@@ -139,7 +156,8 @@ function ResetPasswordContent() {
       if (
         errorMessage.includes("invalid") ||
         errorMessage.includes("expired") ||
-        errorMessage.includes("token")
+        errorMessage.includes("token") ||
+        errorMessage.includes("session")
       ) {
         setError(
           "Invalid or expired reset token. Please request a new password reset link.",

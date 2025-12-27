@@ -1,7 +1,33 @@
-import React from 'react';
-import { FileText, Globe, BookOpen } from 'lucide-react';
+"use client";
+
+import React, { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { FileText, Globe, BookOpen } from "lucide-react";
 
 export default function Home() {
+  const router = useRouter();
+
+  // Handle Supabase password reset redirect
+  // Supabase redirects to root with access_token in hash: /#access_token=...
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Check if there's an access_token in the hash (from Supabase reset link)
+    if (window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get("access_token");
+      const type = hashParams.get("type");
+
+      // If it's a recovery token, redirect to reset password page
+      if (accessToken && type === "recovery") {
+        // Preserve the hash fragment in the redirect
+        // Use window.location to ensure hash is preserved
+        window.location.href = `/auth/reset-password${window.location.hash}`;
+        return;
+      }
+    }
+  }, [router]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
       {/* Header */}
@@ -13,14 +39,14 @@ export default function Home() {
           <span className="font-semibold text-gray-800">Student Helper</span>
         </div>
         <div className="flex gap-3">
-          <a 
-            href="/login" 
+          <a
+            href="/auth/sign-in"
             className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
           >
             Sign In
           </a>
-          <a 
-            href="/login" 
+          <a
+            href="/auth/sign-up"
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             Sign Up
@@ -36,10 +62,12 @@ export default function Home() {
             AI-Assisted Student Helper
           </h1>
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto leading-relaxed">
-            Revolutionize your study experience with our AI-powered tool. Chat with your PDFs, get instant answers, and streamline your learning process.
+            Revolutionize your study experience with our AI-powered tool. Chat
+            with your PDFs, get instant answers, and streamline your learning
+            process.
           </p>
-          <a 
-            href="/login" 
+          <a
+            href="/auth/sign-up"
             className="bg-gray-800 text-white px-8 py-3 rounded-lg text-lg font-medium hover:bg-gray-900 transition-colors"
           >
             Get Started
@@ -57,7 +85,8 @@ export default function Home() {
               PDF Processing
             </h3>
             <p className="text-blue-700 text-sm leading-relaxed">
-              Upload your PDF documents and extract text information for instant access and analysis.
+              Upload your PDF documents and extract text information for instant
+              access and analysis.
             </p>
           </div>
 
@@ -70,7 +99,8 @@ export default function Home() {
               AI-Powered Chat
             </h3>
             <p className="text-green-700 text-sm leading-relaxed">
-              Engage in intelligent conversations with your uploaded documents using advanced AI technology.
+              Engage in intelligent conversations with your uploaded documents
+              using advanced AI technology.
             </p>
           </div>
 
@@ -83,7 +113,8 @@ export default function Home() {
               Streamlined Learning
             </h3>
             <p className="text-purple-700 text-sm leading-relaxed">
-              Simplify your study workflow and enhance your understanding of complex topics.
+              Simplify your study workflow and enhance your understanding of
+              complex topics.
             </p>
           </div>
         </div>
