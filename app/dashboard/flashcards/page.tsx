@@ -45,38 +45,38 @@ export default function FlashcardsPage() {
       return;
     }
 
+    const handleLogout = () => {
+      localStorage.removeItem("token");
+      localStorage.removeItem("username");
+      localStorage.removeItem("tokenType");
+      localStorage.removeItem("userId");
+      router.push("/login");
+    };
+
+    const initializeData = async () => {
+      try {
+        const [userProfile, documentsData] = await Promise.all([
+          authAPI.getCurrentUser(),
+          documentsAPI.getDocuments(),
+        ]);
+
+        setUsername(userProfile.username || userProfile.email);
+        const completedDocs = documentsData.filter(
+          (doc) => doc.embedding_status === "completed",
+        );
+        setDocuments(completedDocs);
+      } catch (error) {
+        console.error("Failed to initialize data:", error);
+        if (error instanceof Error && error.message.includes("401")) {
+          handleLogout();
+        } else {
+          setError("Failed to load data. Please refresh the page.");
+        }
+      }
+    };
+
     initializeData();
   }, [router]);
-
-  const initializeData = async () => {
-    try {
-      const [userProfile, documentsData] = await Promise.all([
-        authAPI.getCurrentUser(),
-        documentsAPI.getDocuments(),
-      ]);
-
-      setUsername(userProfile.username || userProfile.email);
-      const completedDocs = documentsData.filter(
-        (doc) => doc.embedding_status === "completed",
-      );
-      setDocuments(completedDocs);
-    } catch (error) {
-      console.error("Failed to initialize data:", error);
-      if (error instanceof Error && error.message.includes("401")) {
-        handleLogout();
-      } else {
-        setError("Failed to load data. Please refresh the page.");
-      }
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
-    localStorage.removeItem("tokenType");
-    localStorage.removeItem("userId");
-    router.push("/login");
-  };
 
   const handleGenerateFlashcards = async () => {
     if (documents.length === 0) {
