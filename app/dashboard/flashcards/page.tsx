@@ -328,107 +328,160 @@ export default function FlashcardsPage() {
           {flashcards.length > 0 && !isGenerating && (
             <div className="space-y-6">
               {/* Stats and Controls */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <Badge variant="outline">
-                    {currentIndex + 1} / {flashcards.length}
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-3">
+                  <Badge
+                    variant="secondary"
+                    className="text-sm font-semibold px-3 py-1.5"
+                  >
+                    Card {currentIndex + 1} of {flashcards.length}
                   </Badge>
-                  <Button variant="outline" size="sm" onClick={handleReset}>
-                    <RotateCcw className="h-4 w-4 mr-2" />
-                    Generate New
-                  </Button>
+                  <div className="h-2 w-32 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all duration-300 rounded-full"
+                      style={{
+                        width: `${((currentIndex + 1) / flashcards.length) * 100}%`,
+                      }}
+                    />
+                  </div>
                 </div>
+                <Button variant="outline" size="sm" onClick={handleReset}>
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Generate New
+                </Button>
               </div>
 
               {/* Flashcard Card */}
-              <Card className="min-h-[400px]">
-                <CardContent className="p-8">
+              <div className="relative w-full max-w-2xl mx-auto">
+                <div
+                  className="relative w-full aspect-[4/3] cursor-pointer group"
+                  onClick={handleFlip}
+                  style={{ perspective: "1200px" }}
+                >
                   <div
-                    className="relative w-full h-full min-h-[350px] cursor-pointer perspective-1000"
-                    onClick={handleFlip}
-                    style={{ perspective: "1000px" }}
+                    className="relative w-full h-full transition-transform duration-700 ease-in-out"
+                    style={{
+                      transformStyle: "preserve-3d",
+                      transform: isFlipped
+                        ? "rotateY(180deg)"
+                        : "rotateY(0deg)",
+                    }}
                   >
+                    {/* Front of Card - Question */}
                     <div
-                      className="relative w-full h-full transition-transform duration-500"
+                      className="absolute inset-0 w-full h-full rounded-2xl shadow-2xl"
                       style={{
-                        transformStyle: "preserve-3d",
-                        transform: isFlipped
-                          ? "rotateY(180deg)"
-                          : "rotateY(0deg)",
+                        backfaceVisibility: "hidden",
+                        WebkitBackfaceVisibility: "hidden",
                       }}
                     >
-                      {/* Front of Card */}
-                      <div
-                        className="absolute inset-0 w-full h-full"
-                        style={{
-                          backfaceVisibility: "hidden",
-                          WebkitBackfaceVisibility: "hidden",
-                        }}
-                      >
-                        <div className="flex flex-col items-center justify-center h-full space-y-4 p-6 border-2 border-dashed rounded-lg bg-muted/50">
-                          <BookOpen className="h-12 w-12 text-muted-foreground" />
-                          <div className="text-center space-y-2">
-                            <p className="text-sm font-medium text-muted-foreground">
-                              Question
-                            </p>
-                            <p className="text-lg font-semibold break-words">
+                      <div className="flex flex-col items-center justify-center h-full p-8 md:p-12 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 rounded-2xl border-2 border-gray-200 dark:border-gray-700 hover:border-primary/50 dark:hover:border-primary/50 transition-all duration-300 shadow-lg">
+                        <div className="absolute top-4 left-4">
+                          <Badge
+                            variant="outline"
+                            className="text-xs font-medium"
+                          >
+                            Question
+                          </Badge>
+                        </div>
+                        <div className="text-center space-y-6 w-full max-w-xl">
+                          <div className="flex justify-center">
+                            <div className="p-4 rounded-full bg-primary/10 dark:bg-primary/20">
+                              <BookOpen className="h-8 w-8 text-primary" />
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <p className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 leading-relaxed break-words px-4">
                               {currentCard.front}
                             </p>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-4">
-                            Click to reveal answer
+                        </div>
+                        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
+                          <p className="text-xs text-muted-foreground flex items-center gap-2 animate-pulse">
+                            <span>Click to reveal answer</span>
+                            <ChevronRight className="h-3 w-3" />
                           </p>
                         </div>
                       </div>
+                    </div>
 
-                      {/* Back of Card */}
-                      <div
-                        className="absolute inset-0 w-full h-full"
-                        style={{
-                          backfaceVisibility: "hidden",
-                          WebkitBackfaceVisibility: "hidden",
-                          transform: "rotateY(180deg)",
-                        }}
-                      >
-                        <div className="flex flex-col items-center justify-center h-full space-y-4 p-6 border-2 border-primary rounded-lg bg-primary/5">
-                          <CheckCircle className="h-12 w-12 text-primary" />
-                          <div className="text-center space-y-2">
-                            <p className="text-sm font-medium text-primary">
-                              Answer
-                            </p>
-                            <p className="text-lg break-words">
+                    {/* Back of Card - Answer */}
+                    <div
+                      className="absolute inset-0 w-full h-full rounded-2xl shadow-2xl"
+                      style={{
+                        backfaceVisibility: "hidden",
+                        WebkitBackfaceVisibility: "hidden",
+                        transform: "rotateY(180deg)",
+                      }}
+                    >
+                      <div className="flex flex-col items-center justify-center h-full p-8 md:p-12 bg-gradient-to-br from-primary/10 via-primary/5 to-white dark:from-primary/20 dark:via-primary/10 dark:to-gray-900 rounded-2xl border-2 border-primary/30 dark:border-primary/40 hover:border-primary/50 dark:hover:border-primary/60 transition-all duration-300 shadow-lg">
+                        <div className="absolute top-4 left-4">
+                          <Badge className="bg-primary text-primary-foreground text-xs font-medium">
+                            Answer
+                          </Badge>
+                        </div>
+                        <div className="text-center space-y-6 w-full max-w-xl">
+                          <div className="flex justify-center">
+                            <div className="p-4 rounded-full bg-primary/20 dark:bg-primary/30">
+                              <CheckCircle className="h-8 w-8 text-primary" />
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <p className="text-xl md:text-2xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed break-words px-4">
                               {currentCard.back}
                             </p>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-4">
-                            Click to see question
+                        </div>
+                        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
+                          <p className="text-xs text-muted-foreground flex items-center gap-2">
+                            <ChevronLeft className="h-3 w-3" />
+                            <span>Click to see question</span>
                           </p>
                         </div>
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
               {/* Navigation Controls */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-center gap-4 pt-4">
                 <Button
                   variant="outline"
+                  size="lg"
                   onClick={handlePrevious}
                   disabled={currentIndex === 0}
+                  className="min-w-[120px]"
                 >
                   <ChevronLeft className="h-4 w-4 mr-2" />
                   Previous
                 </Button>
 
-                <Button variant="outline" onClick={handleFlip}>
-                  {isFlipped ? "Show Question" : "Show Answer"}
+                <Button
+                  variant="default"
+                  size="lg"
+                  onClick={handleFlip}
+                  className="min-w-[140px] bg-primary hover:bg-primary/90"
+                >
+                  {isFlipped ? (
+                    <>
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      Show Question
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Show Answer
+                    </>
+                  )}
                 </Button>
 
                 <Button
                   variant="outline"
+                  size="lg"
                   onClick={handleNext}
                   disabled={currentIndex === flashcards.length - 1}
+                  className="min-w-[120px]"
                 >
                   Next
                   <ChevronRight className="h-4 w-4 ml-2" />
