@@ -36,7 +36,7 @@ export default function Home() {
           <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
             <span className="text-white font-bold text-sm">AI</span>
           </div>
-          <span className="font-semibold text-gray-800">Student Helper</span>
+          <span className="font-semibold text-gray-800">StudyMate</span>
         </div>
         <div className="flex gap-3">
           <a
@@ -59,7 +59,7 @@ export default function Home() {
         {/* Hero Section */}
         <div className="max-w-4xl mb-16">
           <h1 className="text-5xl font-bold text-blue-600 mb-6 leading-tight">
-            AI-Assisted Student Helper
+            StudyMate
           </h1>
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto leading-relaxed">
             Revolutionize your study experience with our AI-powered tool. Chat
@@ -122,7 +122,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="text-center text-gray-500 text-sm py-8">
-        © 2024. All AI-Assisted Student Helper Rights. All rights reserved.
+        © 2024. All StudyMate Rights. All rights reserved.
       </footer>
     </div>
   );

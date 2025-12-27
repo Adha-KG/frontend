@@ -2,7 +2,7 @@
 
 ## Project Description
 
-**Adha KG - AI-Powered Student Helper** is a modern web application designed to help students streamline their learning process through intelligent document management and AI-powered interactions. The application enables users to:
+**StudyMate** is a modern web application designed to help students streamline their learning process through intelligent document management and AI-powered interactions. The application enables users to:
 
 - **Upload and Process PDF Documents**: Upload PDF files and extract text information for instant access and analysis
 - **AI-Powered Chat**: Engage in intelligent conversations with uploaded documents using advanced AI technology
