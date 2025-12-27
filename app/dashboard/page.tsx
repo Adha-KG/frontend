@@ -32,7 +32,6 @@ import {
   Menu,
   X,
   Home,
-  FolderOpen,
   MessageCircle,
   CreditCard,
   StickyNote,
@@ -356,14 +355,14 @@ export default function Dashboard() {
                     <BookOpenCheck className="h-4 w-4 mr-2" />
                     Quizzes
                   </Button>
-                  <Button
+                  {/* <Button
                     variant="ghost"
                     className="w-full justify-start"
                     onClick={() => setSidebarOpen(false)}
                   >
                     <FolderOpen className="h-4 w-4 mr-2" />
                     Documents
-                  </Button>
+                  </Button> */}
                 </CardContent>
               </Card>
             </nav>

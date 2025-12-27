@@ -478,6 +478,10 @@ export const documentsAPI = {
     });
     return handleResponse(response);
   },
+
+  getDocumentViewUrl(documentId: string): string {
+    return `${API_BASE_URL}/documents/${documentId}/view`;
+  },
 };
 
 // Chat Sessions API
