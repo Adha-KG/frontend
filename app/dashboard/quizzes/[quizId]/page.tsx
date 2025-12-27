@@ -56,9 +56,11 @@ export default function QuizDetailPage() {
   }, [quizId]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    // Check for access_token first (new system), then fall back to token (old system)
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
     if (!token) {
-      router.push("/login");
+      router.push("/auth/sign-in");
     } else if (quizId) {
       loadQuiz();
     }

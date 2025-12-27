@@ -93,10 +93,12 @@ export default function PDFChatterPage() {
   };
 
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
+    // Check for access_token first (new system), then fall back to token (old system)
+    const storedToken =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
 
     if (!storedToken) {
-      router.push("/login");
+      router.push("/auth/sign-in");
       return;
     }
 
@@ -174,10 +176,13 @@ export default function PDFChatterPage() {
   };
 
   const handleLogout = () => {
+    // Clear both old and new token keys
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     localStorage.removeItem("token");
     localStorage.removeItem("username");
     localStorage.removeItem("tokenType");
-    router.push("/login");
+    router.push("/auth/sign-in");
   };
 
   const validateFiles = (files: File[]) => {

@@ -116,9 +116,11 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    // Check for access_token first (new system), then fall back to token (old system)
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
     if (!token) {
-      router.push("/login");
+      router.push("/auth/sign-in");
       return;
     }
 
@@ -127,11 +129,14 @@ export default function Dashboard() {
   }, [router]);
 
   const handleLogout = () => {
+    // Clear both old and new token keys
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     localStorage.removeItem("token");
     localStorage.removeItem("username");
     localStorage.removeItem("tokenType");
     localStorage.removeItem("userId");
-    router.push("/login");
+    router.push("/auth/sign-in");
   };
 
   const handleDeleteDocument = async (documentId: string) => {
