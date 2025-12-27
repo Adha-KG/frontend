@@ -4,6 +4,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 // Types for API responses
 export interface AuthResponse {
   access_token: string;
+  refresh_token: string;
   token_type: string;
   user: {
     id: string;
@@ -318,7 +319,8 @@ export interface QuizStreamEvent {
 
 // Helper function to get auth headers
 const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
+  const token =
+    localStorage.getItem("access_token") || localStorage.getItem("token");
   return {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -372,9 +374,42 @@ export const authAPI = {
     return handleResponse<AuthResponse>(response);
   },
 
+  async forgotPassword(email: string): Promise<{
+    message: string;
+    email: string;
+  }> {
+    const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    return handleResponse(response);
+  },
+
+  async resetPassword(
+    access_token: string,
+    new_password: string,
+  ): Promise<{ message: string }> {
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token, new_password }),
+    });
+    return handleResponse(response);
+  },
+
+  async refreshToken(refresh_token: string): Promise<AuthResponse> {
+    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token }),
+    });
+    return handleResponse<AuthResponse>(response);
+  },
+
   async getCurrentUser(): Promise<User> {
     try {
-      const response = await fetch(`${API_BASE_URL}/me`, {
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
         headers: getAuthHeaders(),
       });
       return handleResponse<User>(response);
@@ -384,12 +419,16 @@ export const authAPI = {
           "Network error: Unable to connect to the server. Please check your connection.",
         );
       }
+      // Handle 401 errors
+      if (error instanceof Error && error.message.includes("401")) {
+        throw new Error("Unauthorized. Please sign in again.");
+      }
       throw error;
     }
   },
 
   async updateProfile(userData: Partial<User>): Promise<User> {
-    const response = await fetch(`${API_BASE_URL}/me`, {
+    const response = await fetch(`${API_BASE_URL}/users/me`, {
       method: "PUT",
       headers: getAuthHeaders(),
       body: JSON.stringify(userData),
@@ -404,7 +443,8 @@ export const documentsAPI = {
     const formData = new FormData();
     files.forEach((file) => formData.append("files", file));
 
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
     const response = await fetch(`${API_BASE_URL}/upload-multiple`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
@@ -547,7 +587,8 @@ export const queryAPI = {
     },
     onChunk?: (content: string) => void,
   ): Promise<QueryResponse> {
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
     const response = await fetch(`${API_BASE_URL}/query/stream`, {
       method: "POST",
       headers: {
@@ -759,7 +800,7 @@ export const notesAPI = {
       `${API_BASE_URL}/notes/${noteId}/download/markdown`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${localStorage.getItem("access_token") || localStorage.getItem("token")}`,
         },
       },
     );
@@ -773,11 +814,13 @@ export const notesAPI = {
    * Download notes as PDF
    */
   async downloadNotesPDF(noteId: string): Promise<Blob> {
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
     const response = await fetch(
       `${API_BASE_URL}/notes/${noteId}/download/pdf`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
       },
     );
@@ -821,7 +864,8 @@ export const notesAPI = {
       formData.append("user_prompt", userPrompt);
     }
 
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
     const response = await fetch(`${API_BASE_URL}/notes/upload`, {
       method: "POST",
       headers: {
@@ -901,7 +945,8 @@ export const quizAPI = {
     request: QuizGenerateRequest,
     onEvent?: (event: QuizStreamEvent) => void,
   ): Promise<QuizResponse> {
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
 
     // Send initial status event if callback provided
     if (onEvent) {
@@ -1108,7 +1153,8 @@ export const flashcardsAPI = {
     onComplete?: (flashcards: Flashcard[]) => void,
     onError?: (error: string) => void,
   ): Promise<Flashcard[]> {
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("access_token") || localStorage.getItem("token");
     const response = await fetch(`${API_BASE_URL}/flashcards/generate/stream`, {
       method: "POST",
       headers: {

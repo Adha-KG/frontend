@@ -1,10 +1,6 @@
-import { Metadata } from 'next';
+"use client";
 
-export const metadata: Metadata = {
-  title: 'Dashboard - PDF Management System',
-  description: 'AI-Assisted Student Helper Dashboard',
-  keywords: 'PDF, AI, student, helper, dashboard, management',
-};
+import { ProtectedRoute } from "@/components/protected-route";
 
 export default function DashboardLayout({
   children,
@@ -12,10 +8,10 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="dashboard-layout min-h-screen">
-      <main className="w-full">
-        {children}
-      </main>
-    </div>
+    <ProtectedRoute>
+      <div className="dashboard-layout min-h-screen">
+        <main className="w-full">{children}</main>
+      </div>
+    </ProtectedRoute>
   );
 }

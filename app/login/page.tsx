@@ -24,6 +24,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { authAPI } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 
 interface LoginData {
   email: string;
@@ -62,16 +63,26 @@ export default function AuthPage() {
     try {
       const result = await authAPI.signIn(loginData.email, loginData.password);
 
-      // Store token and user info
-      localStorage.setItem("token", result.access_token);
-      localStorage.setItem("tokenType", result.token_type);
-      localStorage.setItem("username", result.user.username);
-      localStorage.setItem("userId", result.user.id);
+      // Store auth state using auth store
+      useAuthStore
+        .getState()
+        .setAuth(result.user, result.access_token, result.refresh_token);
 
       // Redirect to dashboard
       router.push("/dashboard");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const errorMessage = err instanceof Error ? err.message : "Login failed";
+      if (
+        errorMessage.includes("Invalid") ||
+        errorMessage.includes("credentials") ||
+        errorMessage.includes("401")
+      ) {
+        setError(
+          "Invalid email or password. Password changed? Try resetting your password.",
+        );
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -84,7 +95,7 @@ export default function AuthPage() {
     setSuccess("");
 
     try {
-      await authAPI.signUp({
+      const result = await authAPI.signUp({
         email: signupData.email,
         password: signupData.password,
         username: signupData.username,
@@ -92,17 +103,23 @@ export default function AuthPage() {
         last_name: signupData.lastName,
       });
 
-      setSuccess("Account created successfully! Please log in.");
-      setActiveTab("login");
-      setSignupData({
-        username: "",
-        email: "",
-        password: "",
-        firstName: "",
-        lastName: "",
-      });
+      // Store auth state and redirect
+      useAuthStore
+        .getState()
+        .setAuth(result.user, result.access_token, result.refresh_token);
+
+      // Redirect to dashboard
+      router.push("/dashboard");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Signup failed");
+      const errorMessage = err instanceof Error ? err.message : "Signup failed";
+      if (
+        errorMessage.includes("already exists") ||
+        errorMessage.includes("already registered")
+      ) {
+        setError("This email is already registered. Please sign in instead.");
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
