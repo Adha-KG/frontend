@@ -1,8 +1,29 @@
-import { updateSession } from "@/lib/supabase/middleware";
-import { type NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+  // Allow public routes
+  const publicRoutes = [
+    "/auth/sign-in",
+    "/auth/sign-up",
+    "/auth/forgot-password",
+    "/auth/reset-password",
+    "/",
+  ];
+
+  const { pathname } = request.nextUrl;
+
+  // Allow public routes and API routes
+  if (
+    publicRoutes.some((route) => pathname.startsWith(route)) ||
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/_next")
+  ) {
+    return NextResponse.next();
+  }
+
+  // For protected routes, let client-side handle auth checks
+  // The ProtectedRoute component will handle redirects
+  return NextResponse.next();
 }
 
 export const config = {

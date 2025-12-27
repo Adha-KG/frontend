@@ -40,7 +40,8 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "shadcn": "latest",
-    "tailwind-merge": "^3.3.0"
+    "tailwind-merge": "^3.3.0",
+    "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
