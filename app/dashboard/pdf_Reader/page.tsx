@@ -94,6 +94,12 @@ export default function PDFReaderPage() {
   const [error, setError] = useState("");
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("token");
+    router.push("/login");
+  }, [router]);
 
   const initializeData = useCallback(async () => {
     try {
@@ -118,7 +124,7 @@ export default function PDFReaderPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [router]);
+  }, [handleLogout]);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -129,13 +135,6 @@ export default function PDFReaderPage() {
 
     initializeData();
   }, [router, initializeData]);
-
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("token");
-    router.push("/login");
-  };
 
   const handleDocumentSelect = async (document: DocumentType) => {
     setSelectedDocument(document);
