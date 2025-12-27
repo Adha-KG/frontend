@@ -55,6 +55,7 @@ function ResetPasswordContent() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [isValidToken, setIsValidToken] = useState<boolean | null>(null);
   const [isSupabaseFlow, setIsSupabaseFlow] = useState(false);
   const router = useRouter();
@@ -69,23 +70,64 @@ function ResetPasswordContent() {
     // Check query parameters first (?access_token=...)
     let token = searchParams.get("access_token") || searchParams.get("token");
     let isSupabase = false;
+    let refreshToken: string | null = null;
 
-    // Check hash fragment if not found in query (#access_token=...)
-    // This handles Supabase redirects which put the token in the hash
-    if (!token && window.location.hash) {
+    // Always check hash fragment for Supabase flows
+    // Supabase redirects put the token in the hash, not query params
+    if (window.location.hash) {
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      token = hashParams.get("access_token") || hashParams.get("token");
-      // Check if it's a Supabase recovery flow (type=recovery in hash)
+      const hashToken =
+        hashParams.get("access_token") || hashParams.get("token");
+      const hashRefreshToken = hashParams.get("refresh_token");
       const type = hashParams.get("type");
+
+      // If it's a Supabase recovery flow (type=recovery), prioritize hash tokens
       if (type === "recovery") {
         isSupabase = true;
+        if (hashToken) {
+          token = hashToken;
+          refreshToken = hashRefreshToken;
+        }
+      } else if (!token && hashToken) {
+        // If no token in query params, use hash token
+        token = hashToken;
+        refreshToken = hashRefreshToken;
       }
     }
 
     if (token) {
       setToken(token);
+      if (refreshToken) {
+        setRefreshToken(refreshToken);
+      }
       setIsSupabaseFlow(isSupabase);
       setIsValidToken(true);
+
+      // For Supabase flow, establish session from hash tokens
+      if (isSupabase && token && refreshToken) {
+        const supabase = createClient();
+        supabase.auth
+          .setSession({
+            access_token: token,
+            refresh_token: refreshToken,
+          })
+          .then(({ error }) => {
+            if (error) {
+              console.error("Failed to establish Supabase session:", error);
+              setError(
+                "Failed to establish session. Please request a new password reset link.",
+              );
+              setIsValidToken(false);
+            }
+          })
+          .catch((err) => {
+            console.error("Error setting Supabase session:", err);
+            setError(
+              "Failed to establish session. Please request a new password reset link.",
+            );
+            setIsValidToken(false);
+          });
+      }
     } else {
       setIsValidToken(false);
       setError(
@@ -134,6 +176,47 @@ function ResetPasswordContent() {
       // Handle Supabase flow: use Supabase's updateUser method
       if (isSupabaseFlow) {
         const supabase = createClient();
+
+        // Verify we have an active session before updating password
+        const {
+          data: { session: initialSession },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        let session = initialSession;
+
+        if (sessionError || !session) {
+          // Try to establish session from stored tokens or hash
+          const accessTokenToUse = token;
+          const refreshTokenToUse =
+            refreshToken ||
+            (window.location.hash
+              ? new URLSearchParams(window.location.hash.substring(1)).get(
+                  "refresh_token",
+                )
+              : null);
+
+          if (accessTokenToUse && refreshTokenToUse) {
+            const { error: setSessionError, data: sessionData } =
+              await supabase.auth.setSession({
+                access_token: accessTokenToUse,
+                refresh_token: refreshTokenToUse,
+              });
+
+            if (setSessionError) {
+              throw new Error(
+                "Failed to establish session. Please request a new password reset link.",
+              );
+            }
+
+            session = sessionData.session;
+          } else {
+            throw new Error(
+              "Missing session tokens. Please request a new password reset link.",
+            );
+          }
+        }
+
+        // Now update the password
         const { error: supabaseError } = await supabase.auth.updateUser({
           password: password,
         });
