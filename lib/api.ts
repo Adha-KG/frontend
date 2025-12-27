@@ -1,4 +1,6 @@
 // API service layer for StudyMate AI frontend
+import { apiFetch } from "./api-client";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // Types for API responses
@@ -800,12 +802,10 @@ export const notesAPI = {
    * Download notes as markdown file
    */
   async downloadNotesMarkdown(noteId: string): Promise<Blob> {
-    const response = await fetch(
+    const response = await apiFetch(
       `${API_BASE_URL}/notes/${noteId}/download/markdown`,
       {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("access_token") || localStorage.getItem("token")}`,
-        },
+        // Don't set Content-Type for blob responses
       },
     );
     if (!response.ok) {
@@ -818,14 +818,10 @@ export const notesAPI = {
    * Download notes as PDF
    */
   async downloadNotesPDF(noteId: string): Promise<Blob> {
-    const token =
-      localStorage.getItem("access_token") || localStorage.getItem("token");
-    const response = await fetch(
+    const response = await apiFetch(
       `${API_BASE_URL}/notes/${noteId}/download/pdf`,
       {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        // Don't set Content-Type for blob responses
       },
     );
     if (!response.ok) {

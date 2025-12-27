@@ -21,7 +21,9 @@ export async function apiFetch(
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
-  if (!headers.has("Content-Type")) {
+  // Only set Content-Type for requests with a body (POST, PUT, PATCH, etc.)
+  // This allows GET requests for downloads to work without Content-Type
+  if (!headers.has("Content-Type") && options.body) {
     headers.set("Content-Type", "application/json");
   }
 
